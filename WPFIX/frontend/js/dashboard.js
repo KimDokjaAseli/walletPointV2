@@ -37,26 +37,27 @@ function renderNavigation(role) {
     let items = [];
 
     // Common Items
-    items.push({ label: 'Dashboard', href: '#dashboard', active: true });
+    items.push({ label: 'Beranda', href: '#dashboard', active: true });
 
     if (role === 'admin') {
         items.push(
-            { label: 'User Management', href: '#users' },
-            { label: 'Wallets', href: '#wallets' },
-            { label: 'Transactions', href: '#transactions' },
-            { label: 'Marketplace', href: '#products' },
-            { label: 'Audit Logs', href: '#audit' }
+            { label: '👥 Manajemen User', href: '#users' },
+            { label: '💳 Dompet', href: '#wallets' },
+            { label: '📝 Transaksi', href: '#transactions' },
+            { label: '🛒 Marketplace', href: '#products' },
+            { label: '📋 Audit Log', href: '#audit' }
         );
     } else if (role === 'dosen') {
         items.push(
-            { label: 'My Missions', href: '#missions' },
-            { label: 'Student Submissions', href: '#submissions' }
+            { label: '🎯 Kelola Misi', href: '#missions' },
+            { label: '✅ Validasi Tugas', href: '#submissions' },
+            { label: '👥 Data Mahasiswa', href: '#students' }
         );
     } else if (role === 'mahasiswa') {
         items.push(
-            { label: 'Available Missions', href: '#missions' },
-            { label: 'Marketplace', href: '#shop' },
-            { label: 'Points History', href: '#history' }
+            { label: '🚀 Misi Tersedia', href: '#missions' },
+            { label: '🛍️ Tukar Poin', href: '#shop' },
+            { label: '📜 Riwayat Poin', href: '#history' }
         );
     }
 
@@ -66,7 +67,49 @@ function renderNavigation(role) {
         </a>
     `).join('');
 
-    // Add click listeners
+    // Render Bottom Nav for Mobile
+    const bottomNav = document.getElementById('bottomNav');
+    if (bottomNav) {
+        const bottomItems = [];
+        // Map labels to icons
+        const iconMap = {
+            'Beranda': '🏠',
+            '🎯 Kelola Misi': '🎯',
+            '✅ Validasi Tugas': '✅',
+            '👥 Data Mahasiswa': '👥',
+            '🚀 Misi Tersedia': '🚀',
+            '🛍️ Tukar Poin': '🛍️',
+            '📜 Riwayat Poin': '📜',
+            '👥 Manajemen User': '👥',
+            '💳 Dompet': '💳',
+            '📝 Transaksi': '📝',
+            '🛒 Marketplace': '🛒',
+            '📋 Audit Log': '📋'
+        };
+
+        bottomNav.innerHTML = items.map(item => `
+            <a href="${item.href}" class="bottom-nav-item ${item.active ? 'active' : ''}" data-target="${item.href.substring(1)}">
+                <span class="nav-icon">${iconMap[item.label] || '📍'}</span>
+                <span>${item.label.split(' ').pop()}</span>
+            </a>
+        `).join('');
+
+        bottomNav.querySelectorAll('.bottom-nav-item').forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                bottomNav.querySelectorAll('.bottom-nav-item').forEach(l => l.classList.remove('active'));
+                nav.querySelectorAll('.nav-item').forEach(l => l.classList.remove('active'));
+
+                link.classList.add('active');
+                const sidebarMatch = nav.querySelector(`[data-target="${link.dataset.target}"]`);
+                if (sidebarMatch) sidebarMatch.classList.add('active');
+
+                handleNavigation(link.dataset.target, role);
+            });
+        });
+    }
+
+    // Add click listeners for sidebar
     nav.querySelectorAll('.nav-item').forEach(link => {
         link.addEventListener('click', (e) => {
             e.preventDefault();
@@ -74,6 +117,13 @@ function renderNavigation(role) {
             // Update Active State
             nav.querySelectorAll('.nav-item').forEach(l => l.classList.remove('active'));
             link.classList.add('active');
+
+            // Sync with bottom nav
+            if (bottomNav) {
+                bottomNav.querySelectorAll('.bottom-nav-item').forEach(l => l.classList.remove('active'));
+                const bottomMatch = bottomNav.querySelector(`[data-target="${link.dataset.target}"]`);
+                if (bottomMatch) bottomMatch.classList.add('active');
+            }
 
             // Handle Navigation
             const target = link.dataset.target;
@@ -116,6 +166,9 @@ function handleNavigation(target, role) {
                 break;
             case 'submissions':
                 DosenController.renderSubmissions();
+                break;
+            case 'students':
+                DosenController.renderStudents();
                 break;
             default:
                 renderDashboard({ role: 'dosen' });
@@ -188,13 +241,62 @@ function renderDashboard(user) {
                 </div>
             </div>
         `;
+    } else if (user.role === 'dosen') {
+        content.innerHTML = `
+            <div class="premium-welcome-card">
+                <div class="welcome-label">Selamat datang,</div>
+                <div class="welcome-balance">${user.name || user.email}</div>
+                <div class="welcome-subtitle">Dosen - Fakultas Ilmu Komputer</div>
+            </div>
+
+            <div class="quick-actions-grid text-center">
+                <div class="action-item" onclick="DosenController.showMissionModal()">
+                    <div class="action-icon-box icon-blue">➕</div>
+                    <div class="action-label">Buat Misi</div>
+                </div>
+                <div class="action-item" onclick="document.querySelector('[data-target=\'missions\']').click()">
+                    <div class="action-icon-box icon-pink">📊</div>
+                    <div class="action-label">Data Misi</div>
+                </div>
+                <div class="action-item" onclick="document.querySelector('[data-target=\'submissions\']').click()">
+                    <div class="action-icon-box icon-green">✅</div>
+                    <div class="action-label">Validasi</div>
+                </div>
+            </div>
+
+            <div class="grid-container">
+                <div class="card">
+                    <div class="stat-label">🎯 Misi Aktif</div>
+                    <div class="stat-value" id="statMissions">--</div>
+                    <div class="stat-trend">Misi yang sedang berjalan</div>
+                </div>
+                <div class="card">
+                    <div class="stat-label">👥 Mhs Terdaftar</div>
+                    <div class="stat-value" id="statStudents">--</div>
+                    <div class="stat-trend">Total mahasiswa</div>
+                </div>
+                <div class="card">
+                    <div class="stat-label">⌛ Menunggu Validasi</div>
+                    <div class="stat-value" id="statPending" style="color: var(--pastel-yellow)">--</div>
+                    <div class="stat-trend">Perlu tinjauan dosen</div>
+                </div>
+            </div>
+
+            <div id="attentionSection"></div>
+        `;
+        DosenController.loadDashboardStats();
     } else {
         content.innerHTML = `
             <div class="grid-container">
                 <div class="card">
-                    <div class="stat-label">Active Missions</div>
+                    <div class="stat-label">My Points</div>
                     <div class="stat-value">0</div>
-                    <div class="stat-trend">Created by you</div>
+                    <div class="stat-trend trend-up">Available Balance</div>
+                </div>
+                <div class="card">
+                    <div class="stat-label">Completed Missions</div>
+                    <div class="stat-value">0</div>
+                    <div class="stat-trend">Keep it up!</div>
                 </div>
             </div>
         `;

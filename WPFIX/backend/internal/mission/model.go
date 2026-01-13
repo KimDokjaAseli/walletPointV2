@@ -5,16 +5,17 @@ import (
 )
 
 type Mission struct {
-	ID          uint       `json:"id" gorm:"primaryKey"`
-	Title       string     `json:"title" gorm:"not null"`
-	Description string     `json:"description" gorm:"type:text"`
-	Type        string     `json:"type" gorm:"type:enum('quiz','task','assignment');not null"`
-	Points      int        `json:"points" gorm:"not null"`
-	Deadline    *time.Time `json:"deadline"`
-	Status      string     `json:"status" gorm:"type:enum('active','inactive','expired');default:'active'"`
-	CreatedBy   uint       `json:"created_by" gorm:"not null"` // Dosen ID
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
+	ID             uint       `json:"id" gorm:"primaryKey"`
+	Title          string     `json:"title" gorm:"not null"`
+	Description    string     `json:"description" gorm:"type:text"`
+	Type           string     `json:"type" gorm:"type:enum('quiz','task','assignment');not null"`
+	Points         int        `json:"points" gorm:"not null"`
+	Deadline       *time.Time `json:"deadline"`
+	Status         string     `json:"status" gorm:"type:enum('active','inactive','expired');default:'active'"`
+	SubmissionType string     `json:"submission_type" gorm:"type:enum('image','file','link','text');default:'text'"`
+	CreatedBy      uint       `json:"created_by" gorm:"not null"` // Dosen ID
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
 }
 
 func (Mission) TableName() string {
@@ -40,19 +41,21 @@ func (MissionSubmission) TableName() string {
 }
 
 type CreateMissionRequest struct {
-	Title       string     `json:"title" binding:"required"`
-	Description string     `json:"description"`
-	Type        string     `json:"type" binding:"required,oneof=quiz task assignment"`
-	Points      int        `json:"points" binding:"required,gt=0"`
-	Deadline    *time.Time `json:"deadline"`
+	Title          string     `json:"title" binding:"required"`
+	Description    string     `json:"description"`
+	Type           string     `json:"type" binding:"required,oneof=quiz task assignment"`
+	Points         int        `json:"points" binding:"required,gt=0"`
+	Deadline       *time.Time `json:"deadline"`
+	SubmissionType string     `json:"submission_type" binding:"required,oneof=image file link text"`
 }
 
 type UpdateMissionRequest struct {
-	Title       string     `json:"title,omitempty"`
-	Description string     `json:"description,omitempty"`
-	Points      int        `json:"points,omitempty" binding:"omitempty,gt=0"`
-	Deadline    *time.Time `json:"deadline,omitempty"`
-	Status      string     `json:"status,omitempty" binding:"omitempty,oneof=active inactive expired"`
+	Title          string     `json:"title,omitempty"`
+	Description    string     `json:"description,omitempty"`
+	Points         int        `json:"points,omitempty" binding:"omitempty,gt=0"`
+	Deadline       *time.Time `json:"deadline,omitempty"`
+	Status         string     `json:"status,omitempty" binding:"omitempty,oneof=active inactive expired"`
+	SubmissionType string     `json:"submission_type,omitempty" binding:"omitempty,oneof=image file link text"`
 }
 
 type SubmitMissionRequest struct {

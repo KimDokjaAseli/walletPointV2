@@ -102,10 +102,16 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB, allowedOrigins string, jwtExpiry in
 		dosenGroup.PUT("/missions/:id", missionHandler.UpdateMission)
 		dosenGroup.DELETE("/missions/:id", missionHandler.DeleteMission)
 		dosenGroup.GET("/missions", missionHandler.GetAllMissions)
+		dosenGroup.GET("/missions/:id", missionHandler.GetMissionByID)
 
 		// Submission Validation
 		dosenGroup.GET("/submissions", missionHandler.GetAllSubmissions)
 		dosenGroup.POST("/submissions/:id/review", missionHandler.ReviewSubmission)
+
+		// Student Monitoring & Credit
+		dosenGroup.GET("/students", userHandler.GetStudents)
+		dosenGroup.POST("/wallet/credit", walletHandler.CreditStudent)
+		dosenGroup.GET("/wallets/:id/transactions", walletHandler.GetWalletTransactions)
 	}
 
 	// ========================================

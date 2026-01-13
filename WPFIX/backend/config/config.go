@@ -62,7 +62,7 @@ func LoadConfig() *Config {
 		DBPort:             getEnv("DB_PORT", "3306"),
 		DBUser:             getEnv("DB_USER", "root"),
 		DBPassword:         getEnv("DB_PASSWORD", ""),
-		DBName:             getEnv("DB_NAME", "wallet_point"),
+		DBName:             getEnv("DB_NAME", "walletpoint_db"),
 		JWTSecret:          getEnv("JWT_SECRET", "change-this-secret-key-in-production"),
 		JWTExpiryHours:     jwtExpiry,
 		AllowedOrigins:     getEnv("ALLOWED_ORIGINS", "*"),

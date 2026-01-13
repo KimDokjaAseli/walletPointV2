@@ -57,6 +57,10 @@ func ConnectDB(cfg *Config) *gorm.DB {
 
 	log.Println("✅ Database connected successfully")
 
+	// Clean up old/broken constraints from previous database states
+	db.Exec("ALTER TABLE missions DROP CONSTRAINT IF EXISTS `chk_mission_points_positive`")
+	db.Exec("ALTER TABLE missions DROP CONSTRAINT IF EXISTS `chk_task_points_positive`")
+
 	// Run migrations
 	err = db.AutoMigrate(
 		&auth.User{},
@@ -72,6 +76,9 @@ func ConnectDB(cfg *Config) *gorm.DB {
 	} else {
 		log.Println("🚀 Database migrated successfully")
 	}
+
+	// Re-add correct constraints with correct column names
+	db.Exec("ALTER TABLE missions ADD CONSTRAINT `chk_mission_points_positive` CHECK (`points` > 0)")
 
 	return db
 }

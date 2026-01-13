@@ -20,7 +20,7 @@ func (r *UserRepository) GetAllWithWallets(params UserListParams) ([]UserWithWal
 	var total int64
 
 	query := r.db.Table("users").
-		Select("users.*, COALESCE(wallets.balance, 0) as balance, wallets.last_sync_at").
+		Select("users.*, wallets.id as wallet_id, COALESCE(wallets.balance, 0) as balance, wallets.last_sync_at").
 		Joins("LEFT JOIN wallets ON users.id = wallets.user_id")
 
 	// Apply filters
@@ -64,7 +64,7 @@ func (r *UserRepository) FindByID(userID uint) (*User, error) {
 func (r *UserRepository) FindByIDWithWallet(userID uint) (*UserWithWallet, error) {
 	var user UserWithWallet
 	err := r.db.Table("users").
-		Select("users.*, COALESCE(wallets.balance, 0) as balance, wallets.last_sync_at").
+		Select("users.*, wallets.id as wallet_id, COALESCE(wallets.balance, 0) as balance, wallets.last_sync_at").
 		Joins("LEFT JOIN wallets ON users.id = wallets.user_id").
 		Where("users.id = ?", userID).
 		Scan(&user).Error

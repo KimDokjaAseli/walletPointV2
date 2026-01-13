@@ -184,3 +184,35 @@ func (h *UserHandler) ChangePassword(c *gin.Context) {
 
 	utils.SuccessResponse(c, http.StatusOK, "Password changed successfully", nil)
 }
+
+// GetStudents handles getting student list for Dosen
+// @Summary Get all students
+// @Description Get list of all students for Dosen view
+// @Tags Dosen - Students
+// @Security BearerAuth
+// @Produce json
+// @Param page query int false "Page number" default(1)
+// @Param limit query int false "Items per page" default(20)
+// @Success 200 {object} utils.Response{data=UserListResponse}
+// @Failure 401 {object} utils.Response
+// @Failure 403 {object} utils.Response
+// @Router /dosen/students [get]
+func (h *UserHandler) GetStudents(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+
+	params := UserListParams{
+		Role:   "mahasiswa",
+		Status: "active",
+		Page:   page,
+		Limit:  limit,
+	}
+
+	response, err := h.service.GetAllUsers(params)
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve students", err.Error())
+		return
+	}
+
+	utils.SuccessResponse(c, http.StatusOK, "Students retrieved successfully", response)
+}

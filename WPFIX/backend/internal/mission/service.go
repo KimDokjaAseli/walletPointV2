@@ -19,13 +19,14 @@ func NewMissionService(repo *MissionRepository, db *gorm.DB) *MissionService {
 // Mission Management
 func (s *MissionService) CreateMission(req *CreateMissionRequest, creatorID uint) (*Mission, error) {
 	mission := &Mission{
-		Title:       req.Title,
-		Description: req.Description,
-		Type:        req.Type,
-		Points:      req.Points,
-		Deadline:    req.Deadline,
-		Status:      "active",
-		CreatedBy:   creatorID,
+		Title:          req.Title,
+		Description:    req.Description,
+		Type:           req.Type,
+		Points:         req.Points,
+		Deadline:       req.Deadline,
+		Status:         "active",
+		SubmissionType: req.SubmissionType,
+		CreatedBy:      creatorID,
 	}
 
 	if err := s.repo.Create(mission); err != nil {
@@ -85,6 +86,9 @@ func (s *MissionService) UpdateMission(id uint, req *UpdateMissionRequest) (*Mis
 	}
 	if req.Status != "" {
 		updates["status"] = req.Status
+	}
+	if req.SubmissionType != "" {
+		updates["submission_type"] = req.SubmissionType
 	}
 
 	if len(updates) > 0 {

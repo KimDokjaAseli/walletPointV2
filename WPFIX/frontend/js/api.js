@@ -158,6 +158,18 @@ class API {
         return API.request(`/dosen/submissions/${id}/review`, 'POST', reviewData);
     }
 
+    static async getDosenStudents(params = {}) {
+        return API.request('/dosen/students', 'GET', null, params);
+    }
+
+    static async creditStudent(data) {
+        return API.request('/dosen/wallet/credit', 'POST', data);
+    }
+
+    static async getStudentTransactions(walletId, params = {}) {
+        return API.request(`/dosen/wallets/${walletId}/transactions`, 'GET', null, params);
+    }
+
     // ========================================
     // MAHASISWA: Mission & Submission
     // ========================================

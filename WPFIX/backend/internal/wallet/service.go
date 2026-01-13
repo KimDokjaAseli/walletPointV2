@@ -180,3 +180,51 @@ func (s *WalletService) GetWalletTransactions(walletID uint, limit int) ([]Walle
 
 	return s.repo.GetWalletTransactions(walletID, limit)
 }
+
+// RewardStudent handles Dosen giving points to student
+func (s *WalletService) RewardStudent(req *AdjustmentRequest, dosenID uint) error {
+	// Start transaction
+	tx := s.db.Begin()
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+
+	// Check if wallet exists
+	_, err := s.repo.FindByID(req.WalletID)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	// Force Credit and Validate Amount
+	if req.Amount <= 0 {
+		tx.Rollback()
+		return errors.New("amount must be positive")
+	}
+
+	// Create transaction record
+	transaction := &WalletTransaction{
+		WalletID:    req.WalletID,
+		Type:        "adjustment",
+		Amount:      req.Amount,
+		Direction:   "credit",
+		Status:      "success",
+		Description: fmt.Sprintf("Reward from Dosen (ID: %d): %s", dosenID, req.Description),
+		CreatedBy:   "dosen",
+	}
+
+	if err := s.repo.CreateTransaction(tx, transaction); err != nil {
+		tx.Rollback()
+		return errors.New("failed to create transaction")
+	}
+
+	// Update balance (Credit adds to balance)
+	if err := s.repo.UpdateBalance(tx, req.WalletID, req.Amount); err != nil {
+		tx.Rollback()
+		return errors.New("failed to update balance")
+	}
+
+	return tx.Commit().Error
+}

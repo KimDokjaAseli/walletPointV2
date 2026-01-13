@@ -197,3 +197,36 @@ func (h *WalletHandler) GetWalletTransactions(c *gin.Context) {
 
 	utils.SuccessResponse(c, http.StatusOK, "Transactions retrieved successfully", transactions)
 }
+
+// CreditStudent handles Dosen giving points to student
+// @Summary Credit points to student
+// @Description Give points directly to a student wallet (Dosen only)
+// @Tags Dosen - Wallets
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param request body AdjustmentRequest true "Credit details"
+// @Success 200 {object} utils.Response
+// @Failure 400 {object} utils.Response
+// @Failure 404 {object} utils.Response
+// @Router /dosen/wallet/credit [post]
+func (h *WalletHandler) CreditStudent(c *gin.Context) {
+	dosenID := c.GetUint("user_id")
+
+	var req AdjustmentRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.ValidationErrorResponse(c, err.Error())
+		return
+	}
+
+	if err := h.service.RewardStudent(&req, dosenID); err != nil {
+		statusCode := http.StatusBadRequest
+		if err.Error() == "wallet not found" {
+			statusCode = http.StatusNotFound
+		}
+		utils.ErrorResponse(c, statusCode, err.Error(), nil)
+		return
+	}
+
+	utils.SuccessResponse(c, http.StatusOK, "Points credited successfully", nil)
+}
