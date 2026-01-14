@@ -1,21 +1,50 @@
 package mission
 
 import (
+	"database/sql/driver"
+	"encoding/json"
+	"errors"
 	"time"
 )
 
+type JSONOptions []string
+
+func (jo JSONOptions) Value() (driver.Value, error) {
+	return json.Marshal(jo)
+}
+
+func (jo *JSONOptions) Scan(value interface{}) error {
+	bytes, ok := value.([]byte)
+	if !ok {
+		return errors.New("type assertion to []byte failed")
+	}
+	return json.Unmarshal(bytes, jo)
+}
+
 type Mission struct {
-	ID             uint       `json:"id" gorm:"primaryKey"`
-	Title          string     `json:"title" gorm:"not null"`
-	Description    string     `json:"description" gorm:"type:text"`
-	Type           string     `json:"type" gorm:"type:enum('quiz','task','assignment');not null"`
-	Points         int        `json:"points" gorm:"not null"`
-	Deadline       *time.Time `json:"deadline"`
-	Status         string     `json:"status" gorm:"type:enum('active','inactive','expired');default:'active'"`
-	SubmissionType string     `json:"submission_type" gorm:"type:enum('image','file','link','text');default:'text'"`
-	CreatedBy      uint       `json:"created_by" gorm:"not null"` // Dosen ID
-	CreatedAt      time.Time  `json:"created_at"`
-	UpdatedAt      time.Time  `json:"updated_at"`
+	ID          uint              `json:"id" gorm:"primaryKey"`
+	CreatorID   uint              `json:"creator_id" gorm:"column:creator_id;not null"`
+	Title       string            `json:"title" gorm:"not null"`
+	Description string            `json:"description" gorm:"type:text"`
+	Type        string            `json:"type" gorm:"type:enum('quiz','task','assignment');not null"`
+	Points      int               `json:"points" gorm:"column:points_reward;not null"`
+	Deadline    *time.Time        `json:"deadline" gorm:"column:deadline"`
+	Status      string            `json:"status" gorm:"type:enum('active','inactive','expired');default:'active'"`
+	Questions   []MissionQuestion `json:"questions,omitempty" gorm:"foreignKey:MissionID;constraint:OnDelete:CASCADE"`
+	CreatedAt   time.Time         `json:"created_at"`
+	UpdatedAt   time.Time         `json:"updated_at"`
+}
+
+type MissionQuestion struct {
+	ID        uint        `json:"id" gorm:"primaryKey"`
+	MissionID uint        `json:"mission_id" gorm:"not null;index"`
+	Question  string      `json:"question" gorm:"type:text;not null"`
+	Options   JSONOptions `json:"options" gorm:"type:json"` // Array of strings (options)
+	Answer    string      `json:"answer" gorm:"not null"`   // Correct answer or index
+}
+
+func (MissionQuestion) TableName() string {
+	return "mission_questions"
 }
 
 func (Mission) TableName() string {
@@ -26,12 +55,12 @@ type MissionSubmission struct {
 	ID         uint      `json:"id" gorm:"primaryKey"`
 	MissionID  uint      `json:"mission_id" gorm:"not null;index"`
 	StudentID  uint      `json:"student_id" gorm:"not null;index"`
-	Content    string    `json:"content" gorm:"type:text"`
+	Content    string    `json:"content" gorm:"column:submission_content;type:text"`
 	FileURL    string    `json:"file_url" gorm:"size:500"`
-	Score      int       `json:"score" gorm:"default:0"`
+	Score      int       `json:"score" gorm:"default:0"` // Will be added by AutoMigrate
 	Status     string    `json:"status" gorm:"type:enum('pending','approved','rejected');default:'pending'"`
-	ReviewedBy uint      `json:"reviewed_by"`
-	ReviewNote string    `json:"review_note" gorm:"type:text"`
+	ReviewedBy *uint     `json:"reviewed_by" gorm:"column:validated_by"`
+	ReviewNote string    `json:"review_note" gorm:"column:validation_note;type:text"`
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
 }
@@ -41,21 +70,26 @@ func (MissionSubmission) TableName() string {
 }
 
 type CreateMissionRequest struct {
-	Title          string     `json:"title" binding:"required"`
-	Description    string     `json:"description"`
-	Type           string     `json:"type" binding:"required,oneof=quiz task assignment"`
-	Points         int        `json:"points" binding:"required,gt=0"`
-	Deadline       *time.Time `json:"deadline"`
-	SubmissionType string     `json:"submission_type" binding:"required,oneof=image file link text"`
+	Title       string            `json:"title" binding:"required"`
+	Description string            `json:"description"`
+	Type        string            `json:"type" binding:"required,oneof=quiz task assignment"`
+	Points      int               `json:"points" binding:"required,gt=0"`
+	Deadline    *time.Time        `json:"deadline"`
+	Questions   []QuestionRequest `json:"questions"`
+}
+
+type QuestionRequest struct {
+	Question string   `json:"question" binding:"required"`
+	Options  []string `json:"options"`
+	Answer   string   `json:"answer" binding:"required"`
 }
 
 type UpdateMissionRequest struct {
-	Title          string     `json:"title,omitempty"`
-	Description    string     `json:"description,omitempty"`
-	Points         int        `json:"points,omitempty" binding:"omitempty,gt=0"`
-	Deadline       *time.Time `json:"deadline,omitempty"`
-	Status         string     `json:"status,omitempty" binding:"omitempty,oneof=active inactive expired"`
-	SubmissionType string     `json:"submission_type,omitempty" binding:"omitempty,oneof=image file link text"`
+	Title       string     `json:"title,omitempty"`
+	Description string     `json:"description,omitempty"`
+	Points      int        `json:"points,omitempty" binding:"omitempty,gt=0"`
+	Deadline    *time.Time `json:"deadline,omitempty"`
+	Status      string     `json:"status,omitempty" binding:"omitempty,oneof=active inactive expired"`
 }
 
 type SubmitMissionRequest struct {

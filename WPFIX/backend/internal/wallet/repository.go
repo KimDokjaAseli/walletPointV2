@@ -133,3 +133,17 @@ func (r *WalletRepository) GetWalletTransactions(walletID uint, limit int) ([]Wa
 		Find(&transactions).Error
 	return transactions, err
 }
+
+// GetLeaderboard retrieves top wallets by balance
+func (r *WalletRepository) GetLeaderboard(limit int) ([]WalletWithUser, error) {
+	var results []WalletWithUser
+	// Only fetch mahasiswa role for leaderboard
+	err := r.db.Table("wallets").
+		Select("users.full_name, users.nim_nip, wallets.balance").
+		Joins("INNER JOIN users ON wallets.user_id = users.id").
+		Where("users.role = 'mahasiswa'").
+		Order("wallets.balance DESC").
+		Limit(limit).
+		Scan(&results).Error
+	return results, err
+}

@@ -3,17 +3,19 @@ package marketplace
 import (
 	"net/http"
 	"strconv"
+	"wallet-point/internal/audit"
 	"wallet-point/utils"
 
 	"github.com/gin-gonic/gin"
 )
 
 type MarketplaceHandler struct {
-	service *MarketplaceService
+	service      *MarketplaceService
+	auditService *audit.AuditService
 }
 
-func NewMarketplaceHandler(service *MarketplaceService) *MarketplaceHandler {
-	return &MarketplaceHandler{service: service}
+func NewMarketplaceHandler(service *MarketplaceService, auditService *audit.AuditService) *MarketplaceHandler {
+	return &MarketplaceHandler{service: service, auditService: auditService}
 }
 
 // GetAll handles getting all products
@@ -101,6 +103,17 @@ func (h *MarketplaceHandler) Create(c *gin.Context) {
 	}
 
 	utils.SuccessResponse(c, http.StatusCreated, "Product created successfully", product)
+
+	// Log activity
+	h.auditService.LogActivity(audit.CreateAuditParams{
+		UserID:    adminID,
+		Action:    "CREATE_PRODUCT",
+		Entity:    "PRODUCT",
+		EntityID:  product.ID,
+		Details:   "Admin created new product: " + product.Name,
+		IPAddress: c.ClientIP(),
+		UserAgent: c.Request.UserAgent(),
+	})
 }
 
 // Update handles updating product
@@ -140,6 +153,18 @@ func (h *MarketplaceHandler) Update(c *gin.Context) {
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "Product updated successfully", product)
+
+	// Log activity
+	adminID := c.GetUint("user_id")
+	h.auditService.LogActivity(audit.CreateAuditParams{
+		UserID:    adminID,
+		Action:    "UPDATE_PRODUCT",
+		Entity:    "PRODUCT",
+		EntityID:  product.ID,
+		Details:   "Admin updated product: " + product.Name,
+		IPAddress: c.ClientIP(),
+		UserAgent: c.Request.UserAgent(),
+	})
 }
 
 // Delete handles deleting product
@@ -169,4 +194,74 @@ func (h *MarketplaceHandler) Delete(c *gin.Context) {
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "Product deleted successfully", nil)
+
+	// Log activity
+	adminID := c.GetUint("user_id")
+	h.auditService.LogActivity(audit.CreateAuditParams{
+		UserID:    adminID,
+		Action:    "DELETE_PRODUCT",
+		Entity:    "PRODUCT",
+		EntityID:  uint(productID),
+		Details:   "Admin deleted product ID: " + strconv.FormatUint(productID, 10),
+		IPAddress: c.ClientIP(),
+		UserAgent: c.Request.UserAgent(),
+	})
+}
+
+// Purchase handles product purchase
+// @Summary Purchase product
+// @Description Purchase a product with points
+// @Tags Marketplace
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param request body PurchaseRequest true "Purchase details"
+// @Success 200 {object} utils.Response{data=MarketplaceTransaction}
+// @Failure 400 {object} utils.Response
+// @Router /marketplace/purchase [post]
+func (h *MarketplaceHandler) Purchase(c *gin.Context) {
+	userID := c.GetUint("user_id")
+
+	var req PurchaseRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.ValidationErrorResponse(c, err.Error())
+		return
+	}
+
+	txn, err := h.service.PurchaseProduct(userID, &req)
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, err.Error(), nil)
+		return
+	}
+
+	utils.SuccessResponse(c, http.StatusOK, "Purchase successful", txn)
+}
+
+// GetTransactions handles getting all marketplace transactions
+// @Summary Get marketplace transactions
+// @Description Get list of all marketplace transactions (Admin)
+// @Tags Admin - Marketplace
+// @Security BearerAuth
+// @Produce json
+// @Param limit query int false "Limit" default(20)
+// @Param offset query int false "Offset" default(0)
+// @Success 200 {object} utils.SuccessResponse
+// @Failure 500 {object} utils.ErrorResponse
+// @Router /admin/marketplace/transactions [get]
+func (h *MarketplaceHandler) GetTransactions(c *gin.Context) {
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
+
+	transactions, total, err := h.service.GetTransactions(limit, offset)
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, err.Error(), nil)
+		return
+	}
+
+	utils.SuccessResponse(c, http.StatusOK, "Transactions retrieved", gin.H{
+		"transactions": transactions,
+		"total":        total,
+		"limit":        limit,
+		"offset":       offset,
+	})
 }

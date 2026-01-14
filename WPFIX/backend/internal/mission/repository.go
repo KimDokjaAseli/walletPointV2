@@ -21,7 +21,7 @@ func (r *MissionRepository) Create(mission *Mission) error {
 
 func (r *MissionRepository) FindByID(id uint) (*Mission, error) {
 	var mission Mission
-	err := r.db.First(&mission, id).Error
+	err := r.db.Preload("Questions").First(&mission, id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, errors.New("mission not found")
@@ -37,7 +37,7 @@ func (r *MissionRepository) FindAll(params MissionListParams) ([]MissionWithCrea
 
 	query := r.db.Table("missions").
 		Select("missions.*, users.full_name as creator_name, users.email as creator_email").
-		Joins("LEFT JOIN users ON users.id = missions.created_by")
+		Joins("LEFT JOIN users ON users.id = missions.creator_id")
 
 	if params.Type != "" {
 		query = query.Where("missions.type = ?", params.Type)
@@ -46,7 +46,7 @@ func (r *MissionRepository) FindAll(params MissionListParams) ([]MissionWithCrea
 		query = query.Where("missions.status = ?", params.Status)
 	}
 	if params.CreatedBy > 0 {
-		query = query.Where("missions.created_by = ?", params.CreatedBy)
+		query = query.Where("missions.creator_id = ?", params.CreatedBy)
 	}
 
 	if err := query.Count(&total).Error; err != nil {
@@ -95,7 +95,7 @@ func (r *MissionRepository) FindAllSubmissions(params SubmissionListParams) ([]S
 		Select("mission_submissions.*, missions.title as mission_title, users.full_name as student_name, users.nim_nip as student_nim, reviewers.full_name as reviewer_name").
 		Joins("LEFT JOIN missions ON missions.id = mission_submissions.mission_id").
 		Joins("LEFT JOIN users ON users.id = mission_submissions.student_id").
-		Joins("LEFT JOIN users as reviewers ON reviewers.id = mission_submissions.reviewed_by")
+		Joins("LEFT JOIN users as reviewers ON reviewers.id = mission_submissions.validated_by")
 
 	if params.MissionID > 0 {
 		query = query.Where("mission_submissions.mission_id = ?", params.MissionID)
@@ -122,6 +122,10 @@ func (r *MissionRepository) FindAllSubmissions(params SubmissionListParams) ([]S
 
 func (r *MissionRepository) UpdateSubmission(id uint, updates map[string]interface{}) error {
 	return r.db.Model(&MissionSubmission{}).Where("id = ?", id).Updates(updates).Error
+}
+
+func (r *MissionRepository) UpdateSubmissionWithTx(tx *gorm.DB, id uint, updates map[string]interface{}) error {
+	return tx.Model(&MissionSubmission{}).Where("id = ?", id).Updates(updates).Error
 }
 
 func (r *MissionRepository) CheckDuplicateSubmission(missionID, studentID uint) (bool, error) {

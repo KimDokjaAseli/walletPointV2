@@ -27,9 +27,39 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 function updateUserProfile(user) {
-    document.getElementById('userName').textContent = user.name || user.email;
+    document.getElementById('userName').textContent = user.full_name || user.email;
     document.getElementById('userRole').textContent = user.role;
-    document.getElementById('userAvatar').textContent = (user.name || user.email).charAt(0).toUpperCase();
+    document.getElementById('userAvatar').textContent = (user.full_name || user.email).charAt(0).toUpperCase();
+}
+
+function showToast(message, type = 'success') {
+    let container = document.getElementById('toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container';
+        document.body.appendChild(container);
+    }
+
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.innerHTML = `
+        <div class="toast-icon">${type === 'success' ? '✅' : type === 'error' ? '❌' : 'ℹ️'}</div>
+        <div class="toast-message">${message}</div>
+    `;
+
+    container.appendChild(toast);
+
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(20px)';
+        setTimeout(() => toast.remove(), 300);
+    }, 4000);
+}
+
+function closeModal(e) {
+    if (e && e.target.className !== 'modal-overlay' && e.target.type !== 'button') return;
+    const modal = document.querySelector('.modal-overlay');
+    if (modal) modal.remove();
 }
 
 function renderNavigation(role) {
@@ -37,29 +67,35 @@ function renderNavigation(role) {
     let items = [];
 
     // Common Items
-    items.push({ label: 'Beranda', href: '#dashboard', active: true });
+    items.push({ label: 'Overview', href: '#dashboard', active: true });
 
     if (role === 'admin') {
         items.push(
-            { label: '👥 Manajemen User', href: '#users' },
-            { label: '💳 Dompet', href: '#wallets' },
-            { label: '📝 Transaksi', href: '#transactions' },
-            { label: '🛒 Marketplace', href: '#products' },
-            { label: '📋 Audit Log', href: '#audit' }
+            { label: 'Users', href: '#users' },
+            { label: 'Wallets', href: '#wallets' },
+            { label: 'Transactions', href: '#transactions' },
+            { label: 'P2P Transfers', href: '#admin-transfers' },
+            { label: 'Marketplace', href: '#products' },
+            { label: 'Sales History', href: '#admin-sales' },
+            { label: 'Audit Logs', href: '#audit-logs' }
         );
     } else if (role === 'dosen') {
         items.push(
-            { label: '🎯 Kelola Misi', href: '#missions' },
-            { label: '✅ Validasi Tugas', href: '#submissions' },
-            { label: '👥 Data Mahasiswa', href: '#students' }
+            { label: 'My Quizzes', href: '#quizzes' },
+            { label: 'My Missions', href: '#missions' },
+            { label: 'Submissions', href: '#submissions' }
         );
     } else if (role === 'mahasiswa') {
         items.push(
-            { label: '🚀 Misi Tersedia', href: '#missions' },
-            { label: '🛍️ Tukar Poin', href: '#shop' },
-            { label: '📜 Riwayat Poin', href: '#history' }
+            { label: 'Discovery Hub', href: '#missions' },
+            { label: 'Rewards Store', href: '#shop' },
+            { label: 'Peer Transfer', href: '#transfer' },
+            { label: 'Leaderboard', href: '#leaderboard' },
+            { label: 'My Ledger', href: '#history' }
         );
     }
+
+    items.push({ label: 'Settings', href: '#profile' });
 
     nav.innerHTML = items.map(item => `
         <a href="${item.href}" class="nav-item ${item.active ? 'active' : ''}" data-target="${item.href.substring(1)}">
@@ -67,67 +103,13 @@ function renderNavigation(role) {
         </a>
     `).join('');
 
-    // Render Bottom Nav for Mobile
-    const bottomNav = document.getElementById('bottomNav');
-    if (bottomNav) {
-        const bottomItems = [];
-        // Map labels to icons
-        const iconMap = {
-            'Beranda': '🏠',
-            '🎯 Kelola Misi': '🎯',
-            '✅ Validasi Tugas': '✅',
-            '👥 Data Mahasiswa': '👥',
-            '🚀 Misi Tersedia': '🚀',
-            '🛍️ Tukar Poin': '🛍️',
-            '📜 Riwayat Poin': '📜',
-            '👥 Manajemen User': '👥',
-            '💳 Dompet': '💳',
-            '📝 Transaksi': '📝',
-            '🛒 Marketplace': '🛒',
-            '📋 Audit Log': '📋'
-        };
-
-        bottomNav.innerHTML = items.map(item => `
-            <a href="${item.href}" class="bottom-nav-item ${item.active ? 'active' : ''}" data-target="${item.href.substring(1)}">
-                <span class="nav-icon">${iconMap[item.label] || '📍'}</span>
-                <span>${item.label.split(' ').pop()}</span>
-            </a>
-        `).join('');
-
-        bottomNav.querySelectorAll('.bottom-nav-item').forEach(link => {
-            link.addEventListener('click', (e) => {
-                e.preventDefault();
-                bottomNav.querySelectorAll('.bottom-nav-item').forEach(l => l.classList.remove('active'));
-                nav.querySelectorAll('.nav-item').forEach(l => l.classList.remove('active'));
-
-                link.classList.add('active');
-                const sidebarMatch = nav.querySelector(`[data-target="${link.dataset.target}"]`);
-                if (sidebarMatch) sidebarMatch.classList.add('active');
-
-                handleNavigation(link.dataset.target, role);
-            });
-        });
-    }
-
-    // Add click listeners for sidebar
+    // Add click listeners
     nav.querySelectorAll('.nav-item').forEach(link => {
         link.addEventListener('click', (e) => {
             e.preventDefault();
-
-            // Update Active State
             nav.querySelectorAll('.nav-item').forEach(l => l.classList.remove('active'));
             link.classList.add('active');
-
-            // Sync with bottom nav
-            if (bottomNav) {
-                bottomNav.querySelectorAll('.bottom-nav-item').forEach(l => l.classList.remove('active'));
-                const bottomMatch = bottomNav.querySelector(`[data-target="${link.dataset.target}"]`);
-                if (bottomMatch) bottomMatch.classList.add('active');
-            }
-
-            // Handle Navigation
-            const target = link.dataset.target;
-            handleNavigation(target, role);
+            handleNavigation(link.dataset.target, role);
         });
     });
 }
@@ -147,31 +129,43 @@ function handleNavigation(target, role) {
             case 'transactions':
                 AdminController.renderTransactions();
                 break;
+            case 'admin-transfers':
+                AdminController.renderTransfers();
+                break;
             case 'products':
                 AdminController.renderProducts();
                 break;
-            case 'audit':
+            case 'admin-sales':
+                AdminController.renderMarketplaceSales();
+                break;
+            case 'audit-logs':
                 AdminController.renderAuditLogs();
                 break;
+            case 'profile':
+                ProfileController.renderProfile();
+                break;
             default:
-                // Fallback to dashboard
                 renderDashboard({ role: 'admin' });
-                title.textContent = 'Admin Dashboard';
+                title.textContent = 'Admin Overview';
                 AdminController.loadDashboardStats();
         }
     } else if (role === 'dosen') {
         switch (target) {
+            case 'quizzes':
+                DosenController.renderQuizzes();
+                break;
             case 'missions':
                 DosenController.renderMissions();
                 break;
             case 'submissions':
                 DosenController.renderSubmissions();
                 break;
-            case 'students':
-                DosenController.renderStudents();
+            case 'profile':
+                ProfileController.renderProfile();
                 break;
             default:
                 renderDashboard({ role: 'dosen' });
+                title.textContent = 'Dosen Overview';
         }
     } else if (role === 'mahasiswa') {
         switch (target) {
@@ -181,124 +175,132 @@ function handleNavigation(target, role) {
             case 'shop':
                 MahasiswaController.renderShop();
                 break;
+            case 'transfer':
+                MahasiswaController.renderTransfer();
+                break;
+            case 'leaderboard':
+                MahasiswaController.renderLeaderboard();
+                break;
             case 'history':
-                MahasiswaController.renderHistory();
+                MahasiswaController.renderLedger();
+                break;
+            case 'profile':
+                ProfileController.renderProfile();
                 break;
             default:
                 renderDashboard({ role: 'mahasiswa' });
+                title.textContent = 'Mahasiswa Overview';
         }
     }
 }
-
 
 function renderDashboard(user) {
     const content = document.getElementById('mainContent');
     const title = document.getElementById('pageTitle');
 
-    title.textContent = `${user.role.charAt(0).toUpperCase() + user.role.slice(1)} Dashboard`;
+    title.textContent = `${user.role.charAt(0).toUpperCase() + user.role.slice(1)} Overview`;
 
     if (user.role === 'admin') {
         content.innerHTML = `
-            <div class="grid-container">
-                <div class="card">
-                    <div class="stat-label">Total Users</div>
-                    <div class="stat-value">--</div>
-                    <div class="stat-trend">Active users in system</div>
+            <div class="stats-grid">
+                <div class="stat-card card-gradient-1">
+                    <span class="stat-label">System Users</span>
+                    <div class="stat-value" id="stats-users">--</div>
+                    <div class="stat-trend" style="color: var(--primary)">Total Registered</div>
                 </div>
-                <div class="card">
-                    <div class="stat-label">Total Transactions</div>
-                    <div class="stat-value">--</div>
-                    <div class="stat-trend">All time</div>
+                <div class="stat-card card-gradient-2">
+                    <span class="stat-label">Total Transactions</span>
+                    <div class="stat-value" id="stats-txns">--</div>
+                    <div class="stat-trend" style="color: var(--secondary)">All Time Events</div>
                 </div>
-                <div class="card">
-                    <div class="stat-label">System Health</div>
-                    <div class="stat-value" style="color: var(--success)">OK</div>
-                    <div class="stat-trend">All services running</div>
+                <div class="stat-card card-gradient-3">
+                    <span class="stat-label">API Status</span>
+                    <div class="stat-value" style="color: var(--success); font-size: 1.5rem; margin-top: 0.5rem;">HEALTY</div>
+                    <div class="stat-trend">Connection Stable</div>
                 </div>
             </div>
             
-            <div class="table-container">
+            <div class="table-wrapper">
                 <div class="table-header">
-                    <h3>Quick Actions</h3>
+                    <h3>Quick Access</h3>
                 </div>
-                <div style="padding: 1.5rem;">
-                    <p>Select a module from the sidebar to manage the system.</p>
-                </div>
-            </div>
-        `;
-    } else if (user.role === 'mahasiswa') {
-        content.innerHTML = `
-            <div class="grid-container">
-                <div class="card">
-                    <div class="stat-label">My Points</div>
-                    <div class="stat-value">0</div>
-                    <div class="stat-trend trend-up">Available Balance</div>
-                </div>
-                <div class="card">
-                    <div class="stat-label">Completed Missions</div>
-                    <div class="stat-value">0</div>
-                    <div class="stat-trend">Keep it up!</div>
+                <div style="padding: 2.5rem; text-align: center; color: var(--text-muted);">
+                    <p>Welcome to the premium admin panel. Use the sidebar to navigate between modules.</p>
                 </div>
             </div>
         `;
+        AdminController.loadDashboardStats();
     } else if (user.role === 'dosen') {
         content.innerHTML = `
-            <div class="premium-welcome-card">
-                <div class="welcome-label">Selamat datang,</div>
-                <div class="welcome-balance">${user.name || user.email}</div>
-                <div class="welcome-subtitle">Dosen - Fakultas Ilmu Komputer</div>
-            </div>
-
-            <div class="quick-actions-grid text-center">
-                <div class="action-item" onclick="DosenController.showMissionModal()">
-                    <div class="action-icon-box icon-blue">➕</div>
-                    <div class="action-label">Buat Misi</div>
+            <div class="stats-grid">
+                <div class="stat-card card-gradient-1">
+                    <span class="stat-label">My Missions</span>
+                    <div class="stat-value" id="stats-missions">--</div>
+                    <div class="stat-trend" style="color: var(--primary)">Total Created</div>
                 </div>
-                <div class="action-item" onclick="document.querySelector('[data-target=\'missions\']').click()">
-                    <div class="action-icon-box icon-pink">📊</div>
-                    <div class="action-label">Data Misi</div>
+                <div class="stat-card card-gradient-2">
+                    <span class="stat-label">Pending Reviews</span>
+                    <div class="stat-value" id="stats-pending">--</div>
+                    <div class="stat-trend" style="color: var(--secondary)">Action Required</div>
                 </div>
-                <div class="action-item" onclick="document.querySelector('[data-target=\'submissions\']').click()">
-                    <div class="action-icon-box icon-green">✅</div>
-                    <div class="action-label">Validasi</div>
+                <div class="stat-card card-gradient-3">
+                    <span class="stat-label">Validated Tasks</span>
+                    <div class="stat-value" id="stats-validated">--</div>
+                    <div class="stat-trend" style="color: var(--success)">Approved by Me</div>
                 </div>
             </div>
-
-            <div class="grid-container">
-                <div class="card">
-                    <div class="stat-label">🎯 Misi Aktif</div>
-                    <div class="stat-value" id="statMissions">--</div>
-                    <div class="stat-trend">Misi yang sedang berjalan</div>
+            
+            <div class="table-wrapper">
+                <div class="table-header">
+                    <h3>Dosen Dashboard</h3>
                 </div>
-                <div class="card">
-                    <div class="stat-label">👥 Mhs Terdaftar</div>
-                    <div class="stat-value" id="statStudents">--</div>
-                    <div class="stat-trend">Total mahasiswa</div>
-                </div>
-                <div class="card">
-                    <div class="stat-label">⌛ Menunggu Validasi</div>
-                    <div class="stat-value" id="statPending" style="color: var(--pastel-yellow)">--</div>
-                    <div class="stat-trend">Perlu tinjauan dosen</div>
+                <div style="padding: 2.5rem; text-align: center; color: var(--text-muted);">
+                    <p>Welcome, Pak/Bu. You can manage your missions and review student submissions using the sidebar.</p>
                 </div>
             </div>
-
-            <div id="attentionSection"></div>
         `;
-        DosenController.loadDashboardStats();
+        DosenController.loadDosenStats();
     } else {
         content.innerHTML = `
-            <div class="grid-container">
-                <div class="card">
-                    <div class="stat-label">My Points</div>
-                    <div class="stat-value">0</div>
-                    <div class="stat-trend trend-up">Available Balance</div>
+            <div class="stats-grid">
+                <div class="stat-card card-gradient-1">
+                    <span class="stat-label">Emerald Balance</span>
+                    <div class="stat-value" id="userBalance">--</div>
+                    <div class="stat-trend" style="color:var(--primary)">Available to spend</div>
                 </div>
-                <div class="card">
-                    <div class="stat-label">Completed Missions</div>
-                    <div class="stat-value">0</div>
-                    <div class="stat-trend">Keep it up!</div>
+                <div class="stat-card card-gradient-2">
+                    <span class="stat-label">Completed Missions</span>
+                    <div class="stat-value" id="stats-missions-done">--</div>
+                    <div class="stat-trend" style="color:var(--secondary)">Points Earned</div>
+                </div>
+                <div class="stat-card card-gradient-3">
+                    <span class="stat-label">Discovery Hub</span>
+                    <div class="stat-value" id="stats-active-missions">--</div>
+                    <div class="stat-trend" style="color:var(--success)">Available Tasks</div>
                 </div>
             </div>
+
+            <div class="card fade-in" style="margin-top: 2rem; padding: 2.5rem; text-align: center; background: linear-gradient(135deg, rgba(99, 102, 241, 0.05), rgba(168, 85, 247, 0.05)); border: 1px dashed var(--primary-light);">
+                <div style="font-size: 3rem; margin-bottom: 1rem;">👋</div>
+                <h2 style="font-weight: 700; color: var(--text-main); margin-bottom: 0.5rem;">Welcome back, ${user.full_name || 'Student'}!</h2>
+                <p style="color: var(--text-muted); max-width: 500px; margin: 0 auto;">Ready to climb the leaderboard? Head over to the Discovery Hub to find new missions and earn more points for rewards.</p>
+                <button class="btn btn-primary" style="margin-top: 1.5rem; border-radius: 20px;" onclick="handleNavigation('missions', 'mahasiswa')">Explore Missions</button>
+            </div>
         `;
+        // Load student stats via API
+        loadStudentStats();
     }
+}
+
+async function loadStudentStats() {
+    try {
+        const user = JSON.parse(localStorage.getItem('user'));
+        const wallet = await API.getWallet(user.id);
+        const missions = await API.getMissions();
+        const submissions = await API.getSubmissions({ status: 'approved' });
+
+        document.getElementById('userBalance').textContent = wallet.data.balance.toLocaleString();
+        document.getElementById('stats-missions-done').textContent = (submissions.data.submissions || []).filter(s => s.user_id === user.id).length;
+        document.getElementById('stats-active-missions').textContent = (missions.data.missions || []).length;
+    } catch (e) { console.error(e); }
 }

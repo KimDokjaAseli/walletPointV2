@@ -47,3 +47,11 @@ type UserSummary struct {
 	Status   string `json:"status"`
 	Balance  int    `json:"balance,omitempty"`
 }
+type UpdateProfileRequest struct {
+	FullName string `json:"full_name" binding:"required"`
+}
+
+type UpdatePasswordRequest struct {
+	OldPassword string `json:"old_password" binding:"required"`
+	NewPassword string `json:"new_password" binding:"required,min=6"`
+}

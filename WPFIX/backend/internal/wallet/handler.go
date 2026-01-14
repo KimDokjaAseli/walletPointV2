@@ -3,17 +3,19 @@ package wallet
 import (
 	"net/http"
 	"strconv"
+	"wallet-point/internal/audit"
 	"wallet-point/utils"
 
 	"github.com/gin-gonic/gin"
 )
 
 type WalletHandler struct {
-	service *WalletService
+	service      *WalletService
+	auditService *audit.AuditService
 }
 
-func NewWalletHandler(service *WalletService) *WalletHandler {
-	return &WalletHandler{service: service}
+func NewWalletHandler(service *WalletService, auditService *audit.AuditService) *WalletHandler {
+	return &WalletHandler{service: service, auditService: auditService}
 }
 
 // GetAllWallets handles getting all wallets
@@ -92,6 +94,17 @@ func (h *WalletHandler) AdjustPoints(c *gin.Context) {
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "Points adjusted successfully", nil)
+
+	// Log activity
+	h.auditService.LogActivity(audit.CreateAuditParams{
+		UserID:    adminID,
+		Action:    "ADJUST_POINTS",
+		Entity:    "WALLET",
+		EntityID:  req.WalletID,
+		Details:   "Admin adjusted points: " + req.Direction + " " + strconv.Itoa(req.Amount) + " | Reason: " + req.Description,
+		IPAddress: c.ClientIP(),
+		UserAgent: c.Request.UserAgent(),
+	})
 }
 
 // ResetWallet handles wallet reset
@@ -124,6 +137,17 @@ func (h *WalletHandler) ResetWallet(c *gin.Context) {
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "Wallet reset successfully", nil)
+
+	// Log activity
+	h.auditService.LogActivity(audit.CreateAuditParams{
+		UserID:    adminID,
+		Action:    "RESET_WALLET",
+		Entity:    "WALLET",
+		EntityID:  req.WalletID,
+		Details:   "Admin reset wallet to " + strconv.Itoa(req.NewBalance) + " | Reason: " + req.Reason,
+		IPAddress: c.ClientIP(),
+		UserAgent: c.Request.UserAgent(),
+	})
 }
 
 // GetAllTransactions handles getting all transactions
@@ -198,35 +222,102 @@ func (h *WalletHandler) GetWalletTransactions(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "Transactions retrieved successfully", transactions)
 }
 
-// CreditStudent handles Dosen giving points to student
-// @Summary Credit points to student
-// @Description Give points directly to a student wallet (Dosen only)
-// @Tags Dosen - Wallets
+// GetLeaderboard handles getting leaderboard
+// @Summary Get leaderboard
+// @Description Get top users by wallet balance
+// @Tags Wallet
+// @Security BearerAuth
+// @Produce json
+// @Param limit query int false "Limit" default(10)
+// @Success 200 {object} utils.Response{data=[]WalletWithUser}
+// @Router /wallets/leaderboard [get]
+func (h *WalletHandler) GetLeaderboard(c *gin.Context) {
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
+
+	leaderboard, err := h.service.GetLeaderboard(limit)
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve leaderboard", err.Error())
+		return
+	}
+
+	utils.SuccessResponse(c, http.StatusOK, "Leaderboard retrieved", leaderboard)
+}
+
+// GetMyWallet handles getting current user's wallet
+// @Summary Get my wallet
+// @Description Get current authenticated user's wallet details
+// @Tags Wallet
+// @Security BearerAuth
+// @Produce json
+// @Success 200 {object} utils.Response{data=Wallet}
+// @Router /mahasiswa/wallet [get]
+func (h *WalletHandler) GetMyWallet(c *gin.Context) {
+	userID := c.GetUint("user_id")
+
+	wallet, err := h.service.GetWalletByUserID(userID)
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusNotFound, "Wallet not found", nil)
+		return
+	}
+
+	utils.SuccessResponse(c, http.StatusOK, "Wallet retrieved successfully", wallet)
+}
+
+// GetMyTransactions handles getting current user's transaction history
+// @Summary Get my transactions
+// @Description Get current authenticated user's wallet transactions
+// @Tags Wallet
+// @Security BearerAuth
+// @Produce json
+// @Param limit query int false "Limit" default(50)
+// @Success 200 {object} utils.Response{data=[]WalletTransaction}
+// @Router /mahasiswa/transactions [get]
+func (h *WalletHandler) GetMyTransactions(c *gin.Context) {
+	userID := c.GetUint("user_id")
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))
+
+	// Find wallet first
+	wallet, err := h.service.GetWalletByUserID(userID)
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusNotFound, "Wallet not found", nil)
+		return
+	}
+
+	transactions, err := h.service.GetWalletTransactions(wallet.ID, limit)
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve transactions", err.Error())
+		return
+	}
+
+	utils.SuccessResponse(c, http.StatusOK, "Transactions retrieved successfully", map[string]interface{}{
+		"transactions": transactions,
+	})
+}
+
+// GeneratePaymentToken handles generating a QR payment token
+// @Summary Generate payment token
+// @Description Generate a secure token for QR payment (Mahasiswa only)
+// @Tags Wallet
 // @Security BearerAuth
 // @Accept json
 // @Produce json
-// @Param request body AdjustmentRequest true "Credit details"
-// @Success 200 {object} utils.Response
-// @Failure 400 {object} utils.Response
-// @Failure 404 {object} utils.Response
-// @Router /dosen/wallet/credit [post]
-func (h *WalletHandler) CreditStudent(c *gin.Context) {
-	dosenID := c.GetUint("user_id")
+// @Param request body PaymentTokenRequest true "Token details"
+// @Success 200 {object} utils.Response{data=PaymentToken}
+// @Router /mahasiswa/payment/token [post]
+func (h *WalletHandler) GeneratePaymentToken(c *gin.Context) {
+	userID := c.GetUint("user_id")
 
-	var req AdjustmentRequest
+	var req PaymentTokenRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.ValidationErrorResponse(c, err.Error())
 		return
 	}
 
-	if err := h.service.RewardStudent(&req, dosenID); err != nil {
-		statusCode := http.StatusBadRequest
-		if err.Error() == "wallet not found" {
-			statusCode = http.StatusNotFound
-		}
-		utils.ErrorResponse(c, statusCode, err.Error(), nil)
+	token, err := h.service.GeneratePaymentToken(userID, req.Amount, req.Merchant, req.Type)
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, err.Error(), nil)
 		return
 	}
 
-	utils.SuccessResponse(c, http.StatusOK, "Points credited successfully", nil)
+	utils.SuccessResponse(c, http.StatusOK, "Payment token generated successfully", token)
 }

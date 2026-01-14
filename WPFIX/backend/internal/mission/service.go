@@ -3,30 +3,45 @@ package mission
 import (
 	"errors"
 	"math"
+	"wallet-point/internal/wallet"
 
 	"gorm.io/gorm"
 )
 
 type MissionService struct {
-	repo *MissionRepository
-	db   *gorm.DB
+	repo          *MissionRepository
+	walletService *wallet.WalletService
+	db            *gorm.DB
 }
 
-func NewMissionService(repo *MissionRepository, db *gorm.DB) *MissionService {
-	return &MissionService{repo: repo, db: db}
+func NewMissionService(repo *MissionRepository, walletService *wallet.WalletService, db *gorm.DB) *MissionService {
+	return &MissionService{
+		repo:          repo,
+		walletService: walletService,
+		db:            db,
+	}
 }
 
 // Mission Management
 func (s *MissionService) CreateMission(req *CreateMissionRequest, creatorID uint) (*Mission, error) {
 	mission := &Mission{
-		Title:          req.Title,
-		Description:    req.Description,
-		Type:           req.Type,
-		Points:         req.Points,
-		Deadline:       req.Deadline,
-		Status:         "active",
-		SubmissionType: req.SubmissionType,
-		CreatedBy:      creatorID,
+		Title:       req.Title,
+		Description: req.Description,
+		Type:        req.Type,
+		Points:      req.Points,
+		Deadline:    req.Deadline,
+		Status:      "active",
+		CreatorID:   creatorID,
+	}
+
+	if req.Type == "quiz" && len(req.Questions) > 0 {
+		for _, q := range req.Questions {
+			mission.Questions = append(mission.Questions, MissionQuestion{
+				Question: q.Question,
+				Options:  q.Options,
+				Answer:   q.Answer,
+			})
+		}
 	}
 
 	if err := s.repo.Create(mission); err != nil {
@@ -79,16 +94,13 @@ func (s *MissionService) UpdateMission(id uint, req *UpdateMissionRequest) (*Mis
 		updates["description"] = req.Description
 	}
 	if req.Points > 0 {
-		updates["points"] = req.Points
+		updates["points_reward"] = req.Points
 	}
 	if req.Deadline != nil {
 		updates["deadline"] = req.Deadline
 	}
 	if req.Status != "" {
 		updates["status"] = req.Status
-	}
-	if req.SubmissionType != "" {
-		updates["submission_type"] = req.SubmissionType
 	}
 
 	if len(updates) > 0 {
@@ -156,16 +168,37 @@ func (s *MissionService) ReviewSubmission(submissionID uint, req *ReviewSubmissi
 		return errors.New("submission has already been reviewed")
 	}
 
-	updates := map[string]interface{}{
-		"status":      req.Status,
-		"score":       req.Score,
-		"review_note": req.ReviewNote,
-		"reviewed_by": reviewerID,
-	}
+	// Start a transaction for the review and potential wallet reward
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		updates := map[string]interface{}{
+			"status":          req.Status,
+			"score":           req.Score,
+			"validation_note": req.ReviewNote,
+			"validated_by":    reviewerID,
+		}
 
-	// If approved, credit wallet (transaction will be handled by wallet service)
-	// We'll return the submission and let the handler call wallet service
-	return s.repo.UpdateSubmission(submissionID, updates)
+		// Update submission status
+		if err := s.repo.UpdateSubmissionWithTx(tx, submissionID, updates); err != nil {
+			return err
+		}
+
+		// If approved, reward points
+		if req.Status == "approved" {
+			mission, err := s.repo.FindByID(submission.MissionID)
+			if err != nil {
+				return err
+			}
+
+			// for now we'll assume it handles its own internal transaction if needed,
+			// though nested transactions in GORM/MySQL are safe.
+			err = s.walletService.ProcessMissionRewardWithTx(tx, submission.StudentID, mission.Points, mission.Title, mission.ID, reviewerID)
+			if err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
 }
 
 func (s *MissionService) GetAllSubmissions(params SubmissionListParams) (*SubmissionListResponse, error) {

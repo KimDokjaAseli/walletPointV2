@@ -80,3 +80,24 @@ func (r *MarketplaceRepository) UpdateStock(tx *gorm.DB, productID uint, delta i
 		Update("stock", gorm.Expr("stock + ?", delta)).
 		Error
 }
+
+// CreateTransaction creates a marketplace transaction record
+func (r *MarketplaceRepository) CreateTransaction(tx *gorm.DB, transaction *MarketplaceTransaction) error {
+	if tx == nil {
+		tx = r.db
+	}
+	return tx.Create(transaction).Error
+}
+
+// GetAllTransactions retrieves marketplace transactions for admin
+func (r *MarketplaceRepository) GetAllTransactions(limit, offset int) ([]MarketplaceTransaction, int64, error) {
+	var transactions []MarketplaceTransaction
+	var total int64
+
+	if err := r.db.Model(&MarketplaceTransaction{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	err := r.db.Limit(limit).Offset(offset).Order("created_at DESC").Find(&transactions).Error
+	return transactions, total, err
+}

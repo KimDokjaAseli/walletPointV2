@@ -58,3 +58,10 @@ func (r *AuthRepository) CheckNimNipExists(nimNip string) (bool, error) {
 	err := r.db.Model(&User{}).Where("nim_nip = ?", nimNip).Count(&count).Error
 	return count > 0, err
 }
+func (r *AuthRepository) Update(userID uint, updates map[string]interface{}) error {
+	return r.db.Model(&User{}).Where("id = ?", userID).Updates(updates).Error
+}
+
+func (r *AuthRepository) UpdatePassword(userID uint, newPassword string) error {
+	return r.db.Model(&User{}).Where("id = ?", userID).Update("password_hash", newPassword).Error
+}

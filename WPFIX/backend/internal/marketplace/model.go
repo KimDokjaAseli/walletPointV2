@@ -21,6 +21,27 @@ func (Product) TableName() string {
 	return "products"
 }
 
+type MarketplaceTransaction struct {
+	ID          uint      `json:"id" gorm:"primaryKey"`
+	WalletID    uint      `json:"wallet_id" gorm:"not null;index"`
+	ProductID   uint      `json:"product_id" gorm:"not null;index"`
+	Amount      int       `json:"amount" gorm:"not null"`                           // Individual item price
+	TotalAmount int       `json:"total_amount" gorm:"column:total_amount;not null"` // This fixes the DB constraint error
+	Quantity    int       `json:"quantity" gorm:"default:1;not null"`
+	Status      string    `json:"status" gorm:"type:enum('success','failed');default:'success'"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+type PurchaseRequest struct {
+	ProductID     uint   `json:"product_id" binding:"required"`
+	PaymentMethod string `json:"payment_method" binding:"omitempty,oneof=wallet qr"`
+	PaymentToken  string `json:"payment_token"`
+}
+
+func (MarketplaceTransaction) TableName() string {
+	return "marketplace_transactions"
+}
+
 type CreateProductRequest struct {
 	Name        string `json:"name" binding:"required"`
 	Description string `json:"description"`

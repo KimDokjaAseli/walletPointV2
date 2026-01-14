@@ -13,37 +13,43 @@
         <!-- Sidebar -->
         <aside class="sidebar">
             <div class="sidebar-header">
-                <div class="brand">Wallet Point</div>
+                <div class="brand-text">WalletPoint</div>
             </div>
 
-            <nav class="sidebar-nav" id="sidebarNav">
+            <nav class="nav-menu" id="sidebarNav">
                 <!-- Navigation items will be injected by JS based on role -->
             </nav>
 
-            <div class="user-profile-mini">
-                <div class="avatar-circle" id="userAvatar">U</div>
-                <div class="user-info-mini">
-                    <div class="user-name" id="userName">Loading...</div>
-                    <div class="user-role" id="userRole">...</div>
+            <div class="profile-footer">
+                <div class="user-pill">
+                    <div class="user-avatar" id="userAvatar">?</div>
+                    <div class="user-details">
+                        <h4 id="userName">User Name</h4>
+                        <span id="userRole">Role</span>
+                    </div>
                 </div>
+                <button onclick="API.logout()" class="btn btn-block"
+                    style="margin-top: 1rem; color: var(--error); background: #fee2e2; padding: 0.6rem;">
+                    Sign Out
+                </button>
             </div>
         </aside>
 
-        <!-- Main Content -->
+        <!-- Main Content Area -->
         <main class="main-content">
-            <header class="top-header">
-                <h2 class="page-title" id="pageTitle">Dashboard</h2>
-                <button onclick="API.logout()" class="btn btn-danger">Logout</button>
+            <header class="top-bar">
+                <div class="page-info">
+                    <h1 id="pageTitle">Overview</h1>
+                </div>
+                <div class="top-actions">
+                    <button class="btn btn-primary" id="globalActionBtn" style="display:none; font-size: 0.875rem;">+
+                        Action</button>
+                </div>
             </header>
 
-            <div class="content-wrapper" id="mainContent">
-                <!-- Content will be injected here -->
+            <div class="content-body" id="mainContent">
+                <!-- Dashboard content will be injected here -->
             </div>
-
-            <!-- Bottom Navigation (Mobile Only) -->
-            <nav class="bottom-nav" id="bottomNav">
-                <!-- Items injected by JS -->
-            </nav>
         </main>
     </div>
 
@@ -53,6 +59,7 @@
     <script src="js/admin.js"></script>
     <script src="js/dosen.js"></script>
     <script src="js/mahasiswa.js"></script>
+    <script src="js/profile.js"></script>
     <script src="js/dashboard.js"></script>
 </body>
 

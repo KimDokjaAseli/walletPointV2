@@ -103,3 +103,29 @@ func (s *AuthService) Register(req *RegisterRequest) (*User, error) {
 func (s *AuthService) GetUserByID(userID uint) (*User, error) {
 	return s.repo.FindByID(userID)
 }
+
+// UpdateProfile updates basic user information
+func (s *AuthService) UpdateProfile(userID uint, req *UpdateProfileRequest) (*User, error) {
+	updates := map[string]interface{}{
+		"full_name": req.FullName,
+	}
+	if err := s.repo.Update(userID, updates); err != nil {
+		return nil, err
+	}
+	return s.repo.FindByID(userID)
+}
+
+// UpdatePassword updates user password after verifying old password
+func (s *AuthService) UpdatePassword(userID uint, req *UpdatePasswordRequest) error {
+	user, err := s.repo.FindByID(userID)
+	if err != nil {
+		return err
+	}
+
+	// Verify old password (plain text for now)
+	if user.PasswordHash != req.OldPassword {
+		return errors.New("current password incorrect")
+	}
+
+	return s.repo.UpdatePassword(userID, req.NewPassword)
+}

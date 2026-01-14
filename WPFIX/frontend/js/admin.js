@@ -6,14 +6,15 @@ class AdminController {
     }
 
     static async loadDashboardStats() {
-        // Since we don't have a dedicated stats endpoint yet, we'll infer from list counts for now
-        // Ideally: backend should provide /admin/stats endpoint
         try {
             const users = await API.getUsers({ limit: 1 });
             const txns = await API.getAllTransactions({ limit: 1 });
 
-            document.querySelectorAll('.stat-value')[0].textContent = users.data.total || 0;
-            document.querySelectorAll('.stat-value')[1].textContent = txns.data.total || 0;
+            const uElem = document.getElementById('stats-users');
+            const tElem = document.getElementById('stats-txns');
+
+            if (uElem) uElem.textContent = users.data.total || 0;
+            if (tElem) tElem.textContent = txns.data.total || 0;
         } catch (e) {
             console.error("Failed to load stats", e);
         }
@@ -25,13 +26,13 @@ class AdminController {
     static async renderUsers() {
         const content = document.getElementById('mainContent');
         content.innerHTML = `
-            <div class="table-container">
+            <div class="table-wrapper">
                 <div class="table-header">
                     <h3>User Management</h3>
                     <button class="btn btn-primary" onclick="AdminController.showAddUserModal()">+ Add User</button>
                 </div>
                 <div style="overflow-x: auto;">
-                    <table id="usersTable">
+                    <table class="premium-table" id="usersTable">
                         <thead>
                             <tr>
                                 <th>Name</th>
@@ -63,12 +64,12 @@ class AdminController {
 
             tbody.innerHTML = users.map(user => `
                 <tr id="user-row-${user.id}">
-                    <td>${user.full_name}</td>
+                    <td><strong>${user.full_name}</strong></td>
                     <td>${user.email}</td>
-                    <td>${user.nim_nip}</td>
-                    <td><span class="status-badge" style="background-color: #e5e7eb;">${user.role}</span></td>
-                    <td><span class="status-badge ${user.status === 'active' ? 'status-active' : 'status-inactive'}">${user.status}</span></td>
-                    <td>${user.balance} pts</td>
+                    <td><code style="background: #f1f5f9; padding: 2px 6px; border-radius: 4px;">${user.nim_nip}</code></td>
+                    <td><span class="badge badge-info">${user.role}</span></td>
+                    <td><span class="badge ${user.status === 'active' ? 'status-active' : 'status-inactive'}">${user.status}</span></td>
+                    <td style="font-weight: 700; color: var(--primary)">${user.balance.toLocaleString()} pts</td>
                     <td>
                         <button class="btn-icon" onclick="AdminController.showEditUserModal(${user.id})" title="Edit User">✏️</button>
                          <button class="btn-icon" onclick="AdminController.resetPassword(${user.id})" title="Reset Password">🔑</button>
@@ -103,40 +104,47 @@ class AdminController {
         const isEdit = !!user;
         const modalHtml = `
             <div class="modal-overlay" onclick="closeModal(event)">
-                <div class="modal-content">
-                    <h3>${title}</h3>
-                    <form id="userForm" onsubmit="AdminController.handleUserSubmit(event, ${isEdit ? user.id : 'null'})">
-                        <div class="form-group">
-                            <label>Full Name</label>
-                            <input type="text" name="full_name" value="${user?.full_name || ''}" required>
-                        </div>
-                        <div class="form-group">
-                            <label>Email</label>
-                            <input type="email" name="email" value="${user?.email || ''}" required>
-                        </div>
-                        <div class="form-group">
-                            <label>NIM/NIP</label>
-                            <input type="text" name="nim_nip" value="${user?.nim_nip || ''}" required>
-                        </div>
-                        <div class="form-group">
-                            <label>Role</label>
-                            <select name="role">
-                                <option value="mahasiswa" ${user?.role === 'mahasiswa' ? 'selected' : ''}>Mahasiswa</option>
-                                <option value="dosen" ${user?.role === 'dosen' ? 'selected' : ''}>Dosen</option>
-                                <option value="admin" ${user?.role === 'admin' ? 'selected' : ''}>Admin</option>
-                            </select>
-                        </div>
-                        ${!isEdit ? `
-                        <div class="form-group">
-                            <label>Password</label>
-                            <input type="password" name="password" required minlength="6">
-                        </div>` : ''}
-                        
-                        <div class="form-actions">
-                            <button type="button" class="btn" onclick="closeModal()">Cancel</button>
-                            <button type="submit" class="btn btn-primary">${isEdit ? 'Save Changes' : 'Create User'}</button>
-                        </div>
-                    </form>
+                <div class="modal-card">
+                    <div class="modal-head">
+                        <h3>${title}</h3>
+                        <button class="btn-icon" onclick="closeModal()">×</button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="userForm" onsubmit="AdminController.handleUserSubmit(event, ${isEdit ? user.id : 'null'})">
+                            <div class="form-group">
+                                <label>Full Name</label>
+                                <input type="text" name="full_name" value="${user?.full_name || ''}" required placeholder="e.g. John Doe">
+                            </div>
+                            <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                                <div>
+                                    <label>Email Address</label>
+                                    <input type="email" name="email" value="${user?.email || ''}" required placeholder="john@example.com">
+                                </div>
+                                <div>
+                                    <label>NIM/NIP</label>
+                                    <input type="text" name="nim_nip" value="${user?.nim_nip || ''}" required placeholder="12345678">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>User Role</label>
+                                <select name="role">
+                                    <option value="mahasiswa" ${user?.role === 'mahasiswa' ? 'selected' : ''}>Mahasiswa</option>
+                                    <option value="dosen" ${user?.role === 'dosen' ? 'selected' : ''}>Dosen</option>
+                                    <option value="admin" ${user?.role === 'admin' ? 'selected' : ''}>Admin</option>
+                                </select>
+                            </div>
+                            ${!isEdit ? `
+                            <div class="form-group">
+                                <label>Initial Password</label>
+                                <input type="password" name="password" required minlength="6" placeholder="Min. 6 characters">
+                            </div>` : ''}
+                            
+                            <div class="form-actions">
+                                <button type="button" class="btn" onclick="closeModal()">Cancel</button>
+                                <button type="submit" class="btn btn-primary">${isEdit ? 'Save Changes' : 'Create User'}</button>
+                            </div>
+                        </form>
+                    </div>
                 </div>
             </div>
         `;
@@ -156,9 +164,9 @@ class AdminController {
             }
             closeModal();
             AdminController.renderUsers();
-            alert(`User ${id ? 'updated' : 'created'} successfully`);
+            showToast(`User ${id ? 'updated' : 'created'} successfully`);
         } catch (error) {
-            alert(error.message);
+            showToast(error.message, 'error');
         }
     }
 
@@ -178,9 +186,9 @@ class AdminController {
         if (newPassword) {
             try {
                 await API.resetUserPassword(id, newPassword);
-                alert('Password updated successfully');
+                showToast('Password updated successfully');
             } catch (error) {
-                alert(error.message);
+                showToast(error.message, 'error');
             }
         }
     }
@@ -192,21 +200,21 @@ class AdminController {
     static async renderWallets() {
         const content = document.getElementById('mainContent');
         content.innerHTML = `
-            <div class="table-container">
+            <div class="table-wrapper">
                 <div class="table-header">
                     <h3>Wallet Management</h3>
                 </div>
                 <div style="overflow-x: auto;">
-                    <table id="walletsTable">
+                    <table class="premium-table" id="walletsTable">
                         <thead>
                             <tr>
-                                <th>User</th>
+                                <th>Account</th>
                                 <th>Role</th>
-                                <th>Balance</th>
-                                <th>Actions</th>
+                                <th>Current Balance</th>
+                                <th>Quick Actions</th>
                             </tr>
                         </thead>
-                        <tbody><tr><td colspan="4">Loading...</td></tr></tbody>
+                        <tbody><tr><td colspan="4" class="text-center">Loading...</td></tr></tbody>
                     </table>
                 </div>
             </div>
@@ -221,13 +229,13 @@ class AdminController {
                 <tr>
                     <td>
                         <strong>${w.full_name}</strong><br>
-                        <small>${w.email}</small>
+                        <small style="color: var(--text-muted)">${w.email}</small>
                     </td>
-                    <td>${w.role}</td>
-                    <td style="font-size: 1.1em; font-weight: bold;">${w.balance.toLocaleString()} pts</td>
+                    <td><span class="badge badge-info">${w.role}</span></td>
+                    <td style="font-size: 1.1em; font-weight: 800; color: var(--primary)">${w.balance.toLocaleString()} pts</td>
                     <td>
-                        <button class="btn btn-primary" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" onclick="AdminController.showAdjustModal(${w.id}, '${w.full_name}')">Adjust Points</button>
-                        <button class="btn btn-danger" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" onclick="AdminController.showResetModal(${w.id}, '${w.full_name}')">Reset</button>
+                        <button class="btn btn-primary" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;" onclick="AdminController.showAdjustModal(${w.id}, '${w.full_name}')">Adjust</button>
+                        <button class="btn" style="padding: 0.4rem 0.8rem; font-size: 0.75rem; background: #fee2e2; color: #991b1b;" onclick="AdminController.showResetModal(${w.id}, '${w.full_name}')">Reset</button>
                     </td>
                 </tr>
             `).join('');
@@ -239,30 +247,35 @@ class AdminController {
     static showAdjustModal(walletId, userName) {
         const modalHtml = `
             <div class="modal-overlay" onclick="closeModal(event)">
-                <div class="modal-content">
-                    <h3>Adjust Points: ${userName}</h3>
-                    <form id="adjustForm" onsubmit="AdminController.handleAdjust(event)">
-                        <input type="hidden" name="wallet_id" value="${walletId}">
-                        <div class="form-group">
-                            <label>Direction</label>
-                            <select name="direction">
-                                <option value="credit">Credit (Add)</option>
-                                <option value="debit">Debit (Deduct)</option>
-                            </select>
-                        </div>
-                         <div class="form-group">
-                            <label>Amount</label>
-                            <input type="number" name="amount" min="1" required>
-                        </div>
-                         <div class="form-group">
-                            <label>Description</label>
-                            <input type="text" name="description" required placeholder="Reason for adjustment">
-                        </div>
-                        <div class="form-actions">
-                            <button type="button" class="btn" onclick="closeModal()">Cancel</button>
-                            <button type="submit" class="btn btn-primary">Process</button>
-                        </div>
-                    </form>
+                <div class="modal-card">
+                    <div class="modal-head">
+                        <h3>Adjust Points: ${userName}</h3>
+                        <button class="btn-icon" onclick="closeModal()">×</button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="adjustForm" onsubmit="AdminController.handleAdjust(event)">
+                            <input type="hidden" name="wallet_id" value="${walletId}">
+                            <div class="form-group">
+                                <label>Direction</label>
+                                <select name="direction">
+                                    <option value="credit">Credit (Add points)</option>
+                                    <option value="debit">Debit (Deduct points)</option>
+                                </select>
+                            </div>
+                             <div class="form-group">
+                                <label>Amount (pts)</label>
+                                <input type="number" name="amount" min="1" required placeholder="e.g. 100">
+                            </div>
+                             <div class="form-group">
+                                <label>Description / Reason</label>
+                                <textarea name="description" required placeholder="Reason for adjustment..." style="min-height: 80px;"></textarea>
+                            </div>
+                            <div class="form-actions">
+                                <button type="button" class="btn" onclick="closeModal()">Cancel</button>
+                                <button type="submit" class="btn btn-primary">Complete Adjustment</button>
+                            </div>
+                        </form>
+                    </div>
                 </div>
             </div>
         `;
@@ -280,33 +293,40 @@ class AdminController {
             await API.adjustWalletPoints(data);
             closeModal();
             AdminController.renderWallets();
-            alert('Points adjusted successfully');
+            showToast('Points adjusted successfully');
         } catch (error) {
-            alert(error.message);
+            showToast(error.message, 'error');
         }
     }
 
     static showResetModal(walletId, userName) {
         const modalHtml = `
             <div class="modal-overlay" onclick="closeModal(event)">
-                <div class="modal-content">
-                    <h3>Reset Wallet: ${userName}</h3>
-                    <p style="color:red; margin-bottom:1rem;">Warning: This will force set the wallet balance to a specific amount.</p>
-                    <form id="resetForm" onsubmit="AdminController.handleReset(event)">
-                        <input type="hidden" name="wallet_id" value="${walletId}">
-                        <div class="form-group">
-                            <label>New Balance</label>
-                            <input type="number" name="new_balance" min="0" value="0" required>
+                <div class="modal-card">
+                    <div class="modal-head">
+                        <h3>Reset Wallet: ${userName}</h3>
+                        <button class="btn-icon" onclick="closeModal()">×</button>
+                    </div>
+                    <div class="modal-body">
+                        <div style="background: #fff7ed; padding: 1rem; border-radius: 0.75rem; border: 1px solid #ffedd5; margin-bottom: 2rem;">
+                            <p style="color:#9a3412; font-size: 0.875rem;"><strong>Critical Warning:</strong> This will override the current balance. This action is recorded in system logs.</p>
                         </div>
-                         <div class="form-group">
-                            <label>Reason (Audit)</label>
-                            <input type="text" name="reason" required placeholder="Why is this reset needed?">
-                        </div>
-                        <div class="form-actions">
-                            <button type="button" class="btn" onclick="closeModal()">Cancel</button>
-                            <button type="submit" class="btn btn-danger">Reset Balance</button>
-                        </div>
-                    </form>
+                        <form id="resetForm" onsubmit="AdminController.handleReset(event)">
+                            <input type="hidden" name="wallet_id" value="${walletId}">
+                            <div class="form-group">
+                                <label>Target Balance (pts)</label>
+                                <input type="number" name="new_balance" min="0" value="0" required>
+                            </div>
+                             <div class="form-group">
+                                <label>Justification (Required)</label>
+                                <input type="text" name="reason" required placeholder="Why is this reset needed?">
+                            </div>
+                            <div class="form-actions" style="margin-top: 2rem;">
+                                <button type="button" class="btn" onclick="closeModal()">Dismiss</button>
+                                <button type="submit" class="btn" style="background: var(--error); color: white;">Confirm Reset</button>
+                            </div>
+                        </form>
+                    </div>
                 </div>
             </div>
         `;
@@ -326,9 +346,9 @@ class AdminController {
             await API.resetWallet(data);
             closeModal();
             AdminController.renderWallets();
-            alert('Wallet balance reset successfully');
+            showToast('Wallet balance reset successfully');
         } catch (error) {
-            alert(error.message);
+            showToast(error.message, 'error');
         }
     }
 
@@ -338,23 +358,23 @@ class AdminController {
     static async renderTransactions() {
         const content = document.getElementById('mainContent');
         content.innerHTML = `
-            <div class="table-container">
+            <div class="table-wrapper">
                 <div class="table-header">
                     <h3>All Transactions</h3>
                 </div>
                 <div style="overflow-x: auto;">
-                    <table id="txnTable">
+                    <table class="premium-table" id="txnTable">
                         <thead>
                             <tr>
-                                <th>Date</th>
+                                <th>Date & Time</th>
                                 <th>User</th>
-                                <th>Type</th>
+                                <th>Activity Type</th>
                                 <th>Amount</th>
                                 <th>Description</th>
                                 <th>Status</th>
                             </tr>
                         </thead>
-                        <tbody><tr><td colspan="6">Loading...</td></tr></tbody>
+                        <tbody><tr><td colspan="6" class="text-center">Loading Data...</td></tr></tbody>
                     </table>
                 </div>
             </div>
@@ -372,43 +392,159 @@ class AdminController {
 
             tbody.innerHTML = txns.map(t => `
                 <tr>
-                    <td>${new Date(t.created_at).toLocaleString()}</td>
-                    <td>${t.user_name} <br> <small>${t.nim_nip}</small></td>
-                    <td>${t.type}</td>
-                    <td class="${t.direction === 'credit' ? 'trend-up' : 'trend-down'}" style="font-weight: bold;">
-                        ${t.direction === 'credit' ? '+' : '-'}${t.amount}
+                    <td><small>${new Date(t.created_at).toLocaleString()}</small></td>
+                    <td>
+                        <strong>${t.user_name}</strong><br>
+                        <small style="color: var(--text-muted)">${t.nim_nip}</small>
                     </td>
-                    <td>${t.description}</td>
-                    <td><span class="status-badge status-active">${t.status}</span></td>
+                    <td><span class="badge badge-info">${t.type}</span></td>
+                    <td style="font-weight: 800; color: ${t.direction === 'credit' ? 'var(--success)' : 'var(--error)'}">
+                        ${t.direction === 'credit' ? '↑' : '↓'} ${t.amount.toLocaleString()}
+                    </td>
+                    <td><small>${t.description}</small></td>
+                    <td><span class="badge badge-success">${t.status}</span></td>
                 </tr>
             `).join('');
         } catch (error) {
             console.error(error);
         }
     }
-    // ==========================
-    // MODULE: MARKETPLACE
-    // ==========================
+    static async renderTransfers() {
+        const content = document.getElementById('mainContent');
+        content.innerHTML = `
+            <div class="table-wrapper">
+                <div class="table-header">
+                    <h3>Peer-to-Peer Transfers</h3>
+                </div>
+                <div style="overflow-x: auto;">
+                    <table class="premium-table" id="transfersTable">
+                        <thead>
+                            <tr>
+                                <th>Timestamp</th>
+                                <th>Sender</th>
+                                <th>Receiver</th>
+                                <th>Amount</th>
+                                <th>Note</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody><tr><td colspan="6" class="text-center">Loading Transfers...</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+
+        try {
+            const result = await API.getAllTransfers({ limit: 50 });
+            const items = result.data.transfers || [];
+
+            const tbody = document.querySelector('#transfersTable tbody');
+            if (items.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center">No transfers recorded.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = items.map(t => `
+                <tr>
+                    <td><small>${new Date(t.created_at).toLocaleString()}</small></td>
+                    <td>
+                        <strong>${t.sender_name}</strong><br>
+                        <small style="color:var(--text-muted)">${t.sender_nim}</small>
+                    </td>
+                    <td>
+                         <strong>${t.receiver_name}</strong><br>
+                        <small style="color:var(--text-muted)">${t.receiver_nim}</small>
+                    </td>
+                    <td style="font-weight: 800; color: var(--primary)">
+                         ${t.amount.toLocaleString()} pts
+                    </td>
+                    <td><small>${t.description || '-'}</small></td>
+                    <td><span class="badge ${t.status === 'success' ? 'status-active' : 'status-inactive'}">${t.status}</span></td>
+                </tr>
+            `).join('');
+        } catch (error) {
+            console.error(error);
+            document.querySelector('#transfersTable tbody').innerHTML = '<tr><td colspan="6" class="text-center" style="color:red">Error loading transfers.</td></tr>';
+        }
+    }
+
+    static async renderMarketplaceSales() {
+        const content = document.getElementById('mainContent');
+        content.innerHTML = `
+            <div class="table-wrapper">
+                <div class="table-header">
+                    <h3>Marketplace Sales History</h3>
+                </div>
+                <div style="overflow-x: auto;">
+                    <table class="premium-table" id="salesTable">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Buyer</th>
+                                <th>Product ID</th>
+                                <th>Amount Paid</th>
+                                <th>Qty</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody><tr><td colspan="6" class="text-center">Loading Sales...</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+
+        try {
+            const result = await API.getMarketplaceTransactions({ limit: 50 });
+            const items = result.data.transactions || [];
+
+            const tbody = document.querySelector('#salesTable tbody');
+            if (items.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center">No sales recorded.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = items.map(t => `
+                <tr>
+                    <td><small>${new Date(t.created_at).toLocaleString()}</small></td>
+                    <td>
+                         User #${t.wallet_id} <span style="color:var(--text-muted)">(Wallet)</span>
+                    </td>
+                    <td>
+                         Product #${t.product_id}
+                    </td>
+                    <td style="font-weight: 800; color: var(--success)">
+                         +${t.amount.toLocaleString()} pts
+                    </td>
+                    <td>${t.quantity}</td>
+                    <td><span class="badge ${t.status === 'success' ? 'status-active' : 'status-inactive'}">${t.status}</span></td>
+                </tr>
+            `).join('');
+        } catch (error) {
+            console.error(error);
+            document.querySelector('#salesTable tbody').innerHTML = '<tr><td colspan="6" class="text-center" style="color:red">Error loading sales history.</td></tr>';
+        }
+    }
+
     static async renderProducts() {
         const content = document.getElementById('mainContent');
         content.innerHTML = `
-            <div class="table-container">
+            <div class="table-wrapper">
                 <div class="table-header">
-                    <h3>Marketplace Products</h3>
-                    <button class="btn btn-primary" onclick="AdminController.showProductModal()">+ Add Product</button>
+                    <h3>Marketplace Catalog</h3>
+                    <button class="btn btn-primary" onclick="AdminController.showProductModal()">+ Create Product</button>
                 </div>
                 <div style="overflow-x: auto;">
-                    <table id="productsTable">
+                    <table class="premium-table" id="productsTable">
                         <thead>
                             <tr>
-                                <th>Name</th>
-                                <th>Price</th>
+                                <th>Product Details</th>
+                                <th>Pricing</th>
                                 <th>Stock</th>
                                 <th>Status</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
-                        <tbody><tr><td colspan="5">Loading...</td></tr></tbody>
+                        <tbody><tr><td colspan="5" class="text-center">Syncing Marketplace...</td></tr></tbody>
                     </table>
                 </div>
             </div>
@@ -427,15 +563,23 @@ class AdminController {
             tbody.innerHTML = products.map(p => `
                 <tr>
                     <td>
-                        <strong>${p.name}</strong><br>
-                        <small>${p.description || ''}</small>
+                        <div style="display:flex; align-items:center; gap:1rem;">
+                            <div style="width:40px; height:40px; background:#f1f5f9; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:1.2rem;">📦</div>
+                            <div>
+                                <strong>${p.name}</strong><br>
+                                <small style="color:var(--text-muted)">${p.description || 'No description'}</small>
+                            </div>
+                        </div>
                     </td>
-                    <td style="font-weight:bold">${p.price.toLocaleString()} pts</td>
-                    <td>${p.stock} units</td>
-                    <td><span class="status-badge ${p.status === 'active' ? 'status-active' : 'status-inactive'}">${p.status}</span></td>
+                    <td style="font-weight:800; color:var(--primary)">${p.price.toLocaleString()} pts</td>
                     <td>
-                        <button class="btn-icon" onclick="AdminController.showProductModal(${p.id})" title="Edit">✏️</button>
-                        <button class="btn-icon" style="color:red" onclick="AdminController.deleteProduct(${p.id})" title="Delete">🗑️</button>
+                        <div style="font-weight:600;">${p.stock} units</div>
+                        <progress value="${p.stock}" max="100" style="width:60px; height:6px;"></progress>
+                    </td>
+                    <td><span class="badge ${p.status === 'active' ? 'status-active' : 'status-inactive'}">${p.status}</span></td>
+                    <td>
+                        <button class="btn-icon" onclick="AdminController.showProductModal(${p.id})" title="Edit Item">✏️</button>
+                        <button class="btn-icon" style="color:var(--error)" onclick="AdminController.deleteProduct(${p.id})" title="Delete Item">🗑️</button>
                     </td>
                 </tr>
             `).join('');
@@ -448,11 +592,6 @@ class AdminController {
         let product = null;
         if (id) {
             try {
-                // Fetch product details if editing (or find from existing list if possible)
-                // For simplicity, we'll just fetch by ID or assume passed data
-                // Ideally we fetch generic get first.
-                // Let's rely on basic form reset if new.
-                // To do it properly: 
                 const res = await API.request(`/admin/products/${id}`, 'GET');
                 product = res.data;
             } catch (e) { console.error(e); }
@@ -460,41 +599,48 @@ class AdminController {
 
         const modalHtml = `
             <div class="modal-overlay" onclick="closeModal(event)">
-                <div class="modal-content">
-                    <h3>${id ? 'Edit Product' : 'Add New Product'}</h3>
-                    <form id="productForm" onsubmit="AdminController.handleProductSubmit(event, ${id})">
-                        <div class="form-group">
-                            <label>Product Name</label>
-                            <input type="text" name="name" value="${product?.name || ''}" required>
-                        </div>
-                        <div class="form-group">
-                            <label>Description</label>
-                            <input type="text" name="description" value="${product?.description || ''}">
-                        </div>
-                        <div class="form-group">
-                            <label>Price (Points)</label>
-                            <input type="number" name="price" value="${product?.price || ''}" required min="1">
-                        </div>
-                        <div class="form-group">
-                            <label>Initial Stock</label>
-                            <input type="number" name="stock" value="${product?.stock || 0}" required min="0">
-                        </div>
-                         <div class="form-group">
-                            <label>Image URL (Optional)</label>
-                            <input type="text" name="image_url" value="${product?.image_url || ''}" placeholder="http://...">
-                        </div>
-                        <div class="form-group">
-                            <label>Status</label>
-                            <select name="status">
-                                <option value="active" ${product?.status === 'active' ? 'selected' : ''}>Active</option>
-                                <option value="inactive" ${product?.status === 'inactive' ? 'selected' : ''}>Inactive</option>
-                            </select>
-                        </div>
-                        <div class="form-actions">
-                            <button type="button" class="btn" onclick="closeModal()">Cancel</button>
-                            <button type="submit" class="btn btn-primary">${id ? 'Update' : 'Create'}</button>
-                        </div>
-                    </form>
+                <div class="modal-card">
+                    <div class="modal-head">
+                        <h3>${id ? 'Modify Product' : 'Catalog New Item'}</h3>
+                        <button class="btn-icon" onclick="closeModal()">×</button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="productForm" onsubmit="AdminController.handleProductSubmit(event, ${id})">
+                            <div class="form-group">
+                                <label>Product Name</label>
+                                <input type="text" name="name" value="${product?.name || ''}" required placeholder="e.g. Campus Hoodie">
+                            </div>
+                            <div class="form-group">
+                                <label>Detailed Description</label>
+                                <textarea name="description" placeholder="Describe the item..." style="min-height: 80px;">${product?.description || ''}</textarea>
+                            </div>
+                            <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                                <div>
+                                    <label>Price (Points)</label>
+                                    <input type="number" name="price" value="${product?.price || ''}" required min="1">
+                                </div>
+                                <div>
+                                    <label>Stock Quantity</label>
+                                    <input type="number" name="stock" value="${product?.stock || 0}" required min="0">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Display Image URL (Optional)</label>
+                                <input type="text" name="image_url" value="${product?.image_url || ''}" placeholder="https://unsplash.com/...">
+                            </div>
+                            <div class="form-group">
+                                <label>Visibility Status</label>
+                                <select name="status">
+                                    <option value="active" ${product?.status === 'active' ? 'selected' : ''}>Active / Listed</option>
+                                    <option value="inactive" ${product?.status === 'inactive' ? 'selected' : ''}>Hidden</option>
+                                </select>
+                            </div>
+                            <div class="form-actions" style="margin-top: 2rem;">
+                                <button type="button" class="btn" onclick="closeModal()">Discard</button>
+                                <button type="submit" class="btn btn-primary">${id ? 'Save Changes' : 'Confirm & List'}</button>
+                            </div>
+                        </form>
+                    </div>
                 </div>
             </div>
         `;
@@ -516,9 +662,9 @@ class AdminController {
             }
             closeModal();
             AdminController.renderProducts();
-            alert(`Product ${id ? 'updated' : 'created'} successfully`);
+            showToast(`Product ${id ? 'updated' : 'created'} successfully`);
         } catch (error) {
-            alert(error.message);
+            showToast(error.message, 'error');
         }
     }
 
@@ -534,83 +680,66 @@ class AdminController {
     }
 
     // ==========================
-    // MODULE: AUDIT LOGS
+    // MODULE: SYSTEM AUDIT
     // ==========================
     static async renderAuditLogs() {
         const content = document.getElementById('mainContent');
         content.innerHTML = `
-            <div class="table-container">
+            <div class="table-wrapper">
                 <div class="table-header">
-                    <h3>System Audit Logs</h3>
-                    <div class="filter-group">
-                        <input type="date" id="auditDateFilter" onchange="AdminController.filterAuditLogs()">
-                        <select id="auditActionFilter" onchange="AdminController.filterAuditLogs()">
-                            <option value="">All Actions</option>
-                            <option value="CREATE">Create</option>
-                            <option value="UPDATE">Update</option>
-                            <option value="DELETE">Delete</option>
-                            <option value="LOGIN">Login</option>
-                        </select>
-                    </div>
+                    <h3>System Audit History</h3>
                 </div>
                 <div style="overflow-x: auto;">
-                    <table id="auditTable">
+                    <table class="premium-table" id="auditTable">
                         <thead>
                             <tr>
-                                <th>Timestamp</th>
-                                <th>User</th>
-                                <th>Action</th>
-                                <th>Entity</th>
-                                <th>Details</th>
-                                <th>IP Address</th>
+                                <th>Occurred At</th>
+                                <th>Performed By</th>
+                                <th>Action Type</th>
+                                <th>Target Entity</th>
+                                <th>Activities Detail</th>
+                                <th>Origin Info</th>
                             </tr>
                         </thead>
-                        <tbody><tr><td colspan="6" class="text-center">Loading...</td></tr></tbody>
+                        <tbody><tr><td colspan="6" class="text-center">Fetching logs...</td></tr></tbody>
                     </table>
                 </div>
             </div>
         `;
 
-        AdminController.filterAuditLogs();
-    }
-
-    static async filterAuditLogs() {
-        const date = document.getElementById('auditDateFilter')?.value || '';
-        const action = document.getElementById('auditActionFilter')?.value || '';
-
         try {
-            const result = await API.getAuditLogs({ date, action, limit: 100 });
+            const result = await API.getAuditLogs({ limit: 50 });
             const logs = result.data.logs || [];
 
             const tbody = document.querySelector('#auditTable tbody');
             if (logs.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" class="text-center">No logs found.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center">No audit logs found.</td></tr>';
                 return;
             }
 
-            tbody.innerHTML = logs.map(l => `
+            tbody.innerHTML = logs.map(log => `
                 <tr>
-                    <td>${new Date(l.created_at).toLocaleString()}</td>
-                    <td>${l.user_name} <br> <small>${l.user_role}</small></td>
-                    <td><span class="status-badge" style="background:#f3f4f6">${l.action}</span></td>
-                    <td>${l.entity} (ID: ${l.entity_id})</td>
-                    <td style="max-width:300px; font-size:0.85em; color:#666">${l.details}</td>
-                    <td><small>${l.ip_address}</small></td>
+                    <td><small style="font-weight:500;">${new Date(log.created_at).toLocaleString()}</small></td>
+                    <td>
+                        <strong>${log.user_name || 'System'}</strong><br>
+                        <span class="badge badge-info" style="font-size: 0.65rem;">${log.user_role || 'SYSTEM'}</span>
+                    </td>
+                    <td><span class="badge" style="background:#f1f5f9; color:var(--text-main);">${log.action}</span></td>
+                    <td><code style="font-size: 0.75rem;">${log.entity} #${log.entity_id}</code></td>
+                    <td style="font-size: 0.875rem;">${log.details}</td>
+                    <td>
+                        <div style="font-size: 0.7rem; color: var(--text-muted);">
+                            <strong>${log.ip_address}</strong><br>
+                            ${log.user_agent ? log.user_agent.substring(0, 30) + '...' : '-'}
+                        </div>
+                    </td>
                 </tr>
             `).join('');
         } catch (error) {
             console.error(error);
+            document.querySelector('#auditTable tbody').innerHTML = '<tr><td colspan="6" class="text-center" style="color:red">Failed to load logs.</td></tr>';
         }
     }
 }
 
-// Global modal helpers
-function closeModal(e) {
-    // If e is present, check if background click
-    if (e && e.target.className !== 'modal-overlay' && e.target.type !== 'button') return;
-
-    // Remove modal
-    const modal = document.querySelector('.modal-overlay');
-    if (modal) modal.remove();
-}
 

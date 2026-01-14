@@ -4,11 +4,6 @@ import (
 	"fmt"
 	"log"
 	"time"
-	"wallet-point/internal/audit"
-	"wallet-point/internal/auth"
-	"wallet-point/internal/marketplace"
-	"wallet-point/internal/mission"
-	"wallet-point/internal/wallet"
 
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
@@ -56,29 +51,5 @@ func ConnectDB(cfg *Config) *gorm.DB {
 	}
 
 	log.Println("✅ Database connected successfully")
-
-	// Clean up old/broken constraints from previous database states
-	db.Exec("ALTER TABLE missions DROP CONSTRAINT IF EXISTS `chk_mission_points_positive`")
-	db.Exec("ALTER TABLE missions DROP CONSTRAINT IF EXISTS `chk_task_points_positive`")
-
-	// Run migrations
-	err = db.AutoMigrate(
-		&auth.User{},
-		&wallet.Wallet{},
-		&wallet.WalletTransaction{},
-		&marketplace.Product{},
-		&audit.AuditLog{},
-		&mission.Mission{},
-		&mission.MissionSubmission{},
-	)
-	if err != nil {
-		log.Printf("⚠️ Migration warning: %v", err)
-	} else {
-		log.Println("🚀 Database migrated successfully")
-	}
-
-	// Re-add correct constraints with correct column names
-	db.Exec("ALTER TABLE missions ADD CONSTRAINT `chk_mission_points_positive` CHECK (`points` > 0)")
-
 	return db
 }

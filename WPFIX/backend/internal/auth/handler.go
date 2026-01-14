@@ -2,17 +2,19 @@ package auth
 
 import (
 	"net/http"
+	"wallet-point/internal/audit"
 	"wallet-point/utils"
 
 	"github.com/gin-gonic/gin"
 )
 
 type AuthHandler struct {
-	service *AuthService
+	service      *AuthService
+	auditService *audit.AuditService
 }
 
-func NewAuthHandler(service *AuthService) *AuthHandler {
-	return &AuthHandler{service: service}
+func NewAuthHandler(service *AuthService, auditService *audit.AuditService) *AuthHandler {
+	return &AuthHandler{service: service, auditService: auditService}
 }
 
 // Login handles user login
@@ -40,6 +42,17 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "Login successful", response)
+
+	// Log activity
+	h.auditService.LogActivity(audit.CreateAuditParams{
+		UserID:    response.User.ID,
+		Action:    "LOGIN",
+		Entity:    "USER",
+		EntityID:  response.User.ID,
+		Details:   "User logged in successfully",
+		IPAddress: c.ClientIP(),
+		UserAgent: c.Request.UserAgent(),
+	})
 }
 
 // Register handles user registration (admin only)
@@ -72,6 +85,18 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	}
 
 	utils.SuccessResponse(c, http.StatusCreated, "User registered successfully", user)
+
+	// Log activity
+	adminID := c.GetUint("user_id")
+	h.auditService.LogActivity(audit.CreateAuditParams{
+		UserID:    adminID,
+		Action:    "REGISTER",
+		Entity:    "USER",
+		EntityID:  user.ID,
+		Details:   "Admin registered new user: " + user.Email,
+		IPAddress: c.ClientIP(),
+		UserAgent: c.Request.UserAgent(),
+	})
 }
 
 // Me handles get current user profile
@@ -93,4 +118,61 @@ func (h *AuthHandler) Me(c *gin.Context) {
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "User retrieved successfully", user)
+}
+
+// UpdateProfile handles user profile update
+func (h *AuthHandler) UpdateProfile(c *gin.Context) {
+	userID := c.GetUint("user_id")
+	var req UpdateProfileRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.ValidationErrorResponse(c, err.Error())
+		return
+	}
+
+	user, err := h.service.UpdateProfile(userID, &req)
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "Failed to update profile", err.Error())
+		return
+	}
+
+	utils.SuccessResponse(c, http.StatusOK, "Profile updated successfully", user)
+
+	// Log activity
+	h.auditService.LogActivity(audit.CreateAuditParams{
+		UserID:    userID,
+		Action:    "UPDATE_PROFILE",
+		Entity:    "USER",
+		EntityID:  userID,
+		Details:   "User updated their own profile",
+		IPAddress: c.ClientIP(),
+		UserAgent: c.Request.UserAgent(),
+	})
+}
+
+// UpdatePassword handles user password change
+func (h *AuthHandler) UpdatePassword(c *gin.Context) {
+	userID := c.GetUint("user_id")
+	var req UpdatePasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.ValidationErrorResponse(c, err.Error())
+		return
+	}
+
+	if err := h.service.UpdatePassword(userID, &req); err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, err.Error(), nil)
+		return
+	}
+
+	utils.SuccessResponse(c, http.StatusOK, "Password updated successfully", nil)
+
+	// Log activity
+	h.auditService.LogActivity(audit.CreateAuditParams{
+		UserID:    userID,
+		Action:    "UPDATE_PASSWORD",
+		Entity:    "USER",
+		EntityID:  userID,
+		Details:   "User changed their own password",
+		IPAddress: c.ClientIP(),
+		UserAgent: c.Request.UserAgent(),
+	})
 }

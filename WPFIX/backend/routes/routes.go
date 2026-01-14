@@ -5,6 +5,7 @@ import (
 	"wallet-point/internal/auth"
 	"wallet-point/internal/marketplace"
 	"wallet-point/internal/mission"
+	"wallet-point/internal/transfer"
 	"wallet-point/internal/user"
 	"wallet-point/internal/wallet"
 	"wallet-point/middleware"
@@ -28,22 +29,25 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB, allowedOrigins string, jwtExpiry in
 	marketplaceRepo := marketplace.NewMarketplaceRepository(db)
 	auditRepo := audit.NewAuditRepository(db)
 	missionRepo := mission.NewMissionRepository(db)
+	transferRepo := transfer.NewRepository(db)
 
 	// Initialize services
 	authService := auth.NewAuthService(authRepo, jwtExpiry)
 	userService := user.NewUserService(userRepo)
 	walletService := wallet.NewWalletService(walletRepo, db)
-	marketplaceService := marketplace.NewMarketplaceService(marketplaceRepo)
+	marketplaceService := marketplace.NewMarketplaceService(marketplaceRepo, walletService, db)
 	auditService := audit.NewAuditService(auditRepo)
-	missionService := mission.NewMissionService(missionRepo, db)
+	missionService := mission.NewMissionService(missionRepo, walletService, db)
+	transferService := transfer.NewService(transferRepo, walletRepo, walletService, db)
 
 	// Initialize handlers
-	authHandler := auth.NewAuthHandler(authService)
-	userHandler := user.NewUserHandler(userService)
-	walletHandler := wallet.NewWalletHandler(walletService)
-	marketplaceHandler := marketplace.NewMarketplaceHandler(marketplaceService)
+	authHandler := auth.NewAuthHandler(authService, auditService)
+	userHandler := user.NewUserHandler(userService, auditService)
+	walletHandler := wallet.NewWalletHandler(walletService, auditService)
+	marketplaceHandler := marketplace.NewMarketplaceHandler(marketplaceService, auditService)
 	auditHandler := audit.NewAuditHandler(auditService)
-	missionHandler := mission.NewMissionHandler(missionService)
+	missionHandler := mission.NewMissionHandler(missionService, auditService)
+	transferHandler := transfer.NewHandler(transferService)
 
 	// ========================================
 	// PUBLIC ROUTES
@@ -52,6 +56,8 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB, allowedOrigins string, jwtExpiry in
 	{
 		authGroup.POST("/login", authHandler.Login)
 		authGroup.GET("/me", middleware.AuthMiddleware(), authHandler.Me)
+		authGroup.PUT("/profile", middleware.AuthMiddleware(), authHandler.UpdateProfile)
+		authGroup.PUT("/password", middleware.AuthMiddleware(), authHandler.UpdatePassword)
 	}
 
 	// ========================================
@@ -78,8 +84,10 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB, allowedOrigins string, jwtExpiry in
 
 		// Transaction Monitoring
 		adminGroup.GET("/transactions", walletHandler.GetAllTransactions)
+		adminGroup.GET("/transfers", transferHandler.GetAllTransfers)
 
 		// Marketplace Management
+		adminGroup.GET("/marketplace/transactions", marketplaceHandler.GetTransactions) // Add this
 		adminGroup.GET("/products", marketplaceHandler.GetAll)
 		adminGroup.POST("/products", marketplaceHandler.Create)
 		adminGroup.GET("/products/:id", marketplaceHandler.GetByID)
@@ -102,16 +110,10 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB, allowedOrigins string, jwtExpiry in
 		dosenGroup.PUT("/missions/:id", missionHandler.UpdateMission)
 		dosenGroup.DELETE("/missions/:id", missionHandler.DeleteMission)
 		dosenGroup.GET("/missions", missionHandler.GetAllMissions)
-		dosenGroup.GET("/missions/:id", missionHandler.GetMissionByID)
 
 		// Submission Validation
 		dosenGroup.GET("/submissions", missionHandler.GetAllSubmissions)
 		dosenGroup.POST("/submissions/:id/review", missionHandler.ReviewSubmission)
-
-		// Student Monitoring & Credit
-		dosenGroup.GET("/students", userHandler.GetStudents)
-		dosenGroup.POST("/wallet/credit", walletHandler.CreditStudent)
-		dosenGroup.GET("/wallets/:id/transactions", walletHandler.GetWalletTransactions)
 	}
 
 	// ========================================
@@ -127,10 +129,23 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB, allowedOrigins string, jwtExpiry in
 		mahasiswaGroup.POST("/missions/submit", missionHandler.SubmitMission)
 		mahasiswaGroup.GET("/submissions", missionHandler.GetAllSubmissions)
 
-		// TODO: View wallet
-		// TODO: Transfer points
-		// TODO: Marketplace purchase
-		// TODO: External sync
+		// Transfer Points
+		mahasiswaGroup.POST("/transfer", transferHandler.CreateTransfer)
+		mahasiswaGroup.GET("/transfer/history", transferHandler.GetMyTransfers)
+		mahasiswaGroup.GET("/transfer/sent", transferHandler.GetSentTransfers)
+		mahasiswaGroup.GET("/transfer/received", transferHandler.GetReceivedTransfers)
+
+		// Marketplace Purchase
+		mahasiswaGroup.POST("/marketplace/purchase", marketplaceHandler.Purchase)
+		mahasiswaGroup.GET("/marketplace/products", marketplaceHandler.GetAll) // Reuse GetAll, maybe add status filter later
+
+		// Gamification
+		mahasiswaGroup.GET("/leaderboard", walletHandler.GetLeaderboard)
+
+		// Personal Wallet
+		mahasiswaGroup.GET("/wallet", walletHandler.GetMyWallet)
+		mahasiswaGroup.GET("/transactions", walletHandler.GetMyTransactions) // Replaces old getTransactions use case
+		mahasiswaGroup.POST("/payment/token", walletHandler.GeneratePaymentToken)
 	}
 
 	// Health check

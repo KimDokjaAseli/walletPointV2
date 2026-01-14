@@ -217,49 +217,62 @@ CALL sp_process_transfer(sender_wallet_id, receiver_wallet_id, amount, note,
 
 ---
 
-## 🛒 Marketplace Flow
+## 🛒 Integrated Commerce & QR Flow
 
 ```mermaid
 flowchart TD
-    Start([Mahasiswa Login]) --> BrowseProducts[Browse Products]
+    Start([Mahasiswa Login]) --> Selection{Select Action}
+    
+    %% Marketplace Branch
+    Selection -->|Marketplace| BrowseProducts[Browse Products]
     BrowseProducts --> SelectProduct[Select Product]
     SelectProduct --> CheckStock{Stock Available?}
-    
     CheckStock -->|No| OutOfStock[Show Out of Stock]
     CheckStock -->|Yes| CheckBalance{Balance Sufficient?}
     
+    %% Peer Transfer Branch
+    Selection -->|Peer Transfer| ScanReceiver[Scan Receiver QR / Enter NIM]
+    ScanReceiver --> EnterAmount[Enter Transfer Amount]
+    EnterAmount --> CheckBalance
+    
+    %% Integrated Payment Execution
     CheckBalance -->|No| InsufficientBalance[Show Insufficient Balance]
-    CheckBalance -->|Yes| ConfirmPurchase[Confirm Purchase]
+    CheckBalance -->|Yes| OpenWallet[Open Digital Wallet]
     
-    ConfirmPurchase --> ProcessTransaction[Process Transaction]
-    ProcessTransaction --> LockResources[Lock Wallet & Product]
-    LockResources --> DebitWallet[Debit Wallet]
-    DebitWallet --> UpdateStock[Update Product Stock]
-    UpdateStock --> CreateRecord[Create Transaction Record]
-    CreateRecord --> CommitTx[Commit Transaction]
-    CommitTx --> NotifySuccess[Notify Success]
+    OpenWallet --> GenerateToken[System: Generate QR Payment Token]
+    GenerateToken --> ScanAction[Mahasiswa: Scan QR / Confirm Payment]
     
-    OutOfStock --> End([End])
+    ScanAction --> ProcessTransaction[System: Process QRIS/BY point Transaction]
+    ProcessTransaction --> AtomicTX[Atomic DB Transaction: Debit, Credit, Stock, Logs]
+    
+    AtomicTX --> TransactionLog[Transaction Logged in Ledger]
+    TransactionLog --> Receipt[Generate Payment Receipt]
+    Receipt --> End([End])
+    
+    OutOfStock --> End
     InsufficientBalance --> End
-    NotifySuccess --> End
 ```
 
-**Request**:
-```http
-POST /mahasiswa/marketplace/purchase
-Authorization: Bearer {jwt_token}
-Content-Type: application/json
+**Integrated Commerce Steps**:
 
-{
-  "product_id": 1,
-  "quantity": 2
-}
-```
+### A. Point Usage (Marketplace or Peer-to-Peer)
+**Workflow**:
+1. **Selection**: Mahasiswa chooses to buy an item or transfer points.
+2. **Payment Token**: System validates initial constraints (stock/balance) and generates a temporary transaction token.
+3. **QR Interaction**: Mahasiswa scans the QR code (for marketplace) or confirms identified recipient (for transfer).
+4. **Processing**: Backend executes an atomic transaction:
+   - For Marketplace: `Debit Wallet` -> `Decrement Stock` -> `Log Marketplace Transaction`
+   - For Transfer: `Debit Sender` -> `Credit Receiver` -> `Log Transfer`
+5. **Finalization**: Transaction is recorded in the immutable Ledger, and a Receipt is shown to the user.
 
-**Atomic Transaction**:
+**Atomic DB Level (sp_process_transaction)**:
 ```sql
-CALL sp_process_marketplace_purchase(wallet_id, product_id, quantity,
-    @transaction_id, @success, @message);
+BEGIN;
+  -- 1. Identity Verification
+  -- 2. Balance & Stock Locking
+  -- 3. Point Movement (Debit/Credit)
+  -- 4. Audit & Receipt Logging
+COMMIT;
 ```
 
 ---

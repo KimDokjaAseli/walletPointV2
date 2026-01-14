@@ -3,17 +3,19 @@ package user
 import (
 	"net/http"
 	"strconv"
+	"wallet-point/internal/audit"
 	"wallet-point/utils"
 
 	"github.com/gin-gonic/gin"
 )
 
 type UserHandler struct {
-	service *UserService
+	service      *UserService
+	auditService *audit.AuditService
 }
 
-func NewUserHandler(service *UserService) *UserHandler {
-	return &UserHandler{service: service}
+func NewUserHandler(service *UserService, auditService *audit.AuditService) *UserHandler {
+	return &UserHandler{service: service, auditService: auditService}
 }
 
 // GetAll handles getting all users
@@ -116,6 +118,18 @@ func (h *UserHandler) Update(c *gin.Context) {
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "User updated successfully", user)
+
+	// Log activity
+	adminID := c.GetUint("user_id")
+	h.auditService.LogActivity(audit.CreateAuditParams{
+		UserID:    adminID,
+		Action:    "UPDATE_USER",
+		Entity:    "USER",
+		EntityID:  user.ID,
+		Details:   "Admin updated user profile: " + user.Email,
+		IPAddress: c.ClientIP(),
+		UserAgent: c.Request.UserAgent(),
+	})
 }
 
 // Deactivate handles deactivating user
@@ -145,6 +159,18 @@ func (h *UserHandler) Deactivate(c *gin.Context) {
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "User deactivated successfully", nil)
+
+	// Log activity
+	adminID := c.GetUint("user_id")
+	h.auditService.LogActivity(audit.CreateAuditParams{
+		UserID:    adminID,
+		Action:    "DEACTIVATE_USER",
+		Entity:    "USER",
+		EntityID:  uint(userID),
+		Details:   "Admin deactivated user account",
+		IPAddress: c.ClientIP(),
+		UserAgent: c.Request.UserAgent(),
+	})
 }
 
 // ChangePassword handles changing user password
@@ -183,36 +209,16 @@ func (h *UserHandler) ChangePassword(c *gin.Context) {
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "Password changed successfully", nil)
-}
 
-// GetStudents handles getting student list for Dosen
-// @Summary Get all students
-// @Description Get list of all students for Dosen view
-// @Tags Dosen - Students
-// @Security BearerAuth
-// @Produce json
-// @Param page query int false "Page number" default(1)
-// @Param limit query int false "Items per page" default(20)
-// @Success 200 {object} utils.Response{data=UserListResponse}
-// @Failure 401 {object} utils.Response
-// @Failure 403 {object} utils.Response
-// @Router /dosen/students [get]
-func (h *UserHandler) GetStudents(c *gin.Context) {
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
-
-	params := UserListParams{
-		Role:   "mahasiswa",
-		Status: "active",
-		Page:   page,
-		Limit:  limit,
-	}
-
-	response, err := h.service.GetAllUsers(params)
-	if err != nil {
-		utils.ErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve students", err.Error())
-		return
-	}
-
-	utils.SuccessResponse(c, http.StatusOK, "Students retrieved successfully", response)
+	// Log activity
+	adminID := c.GetUint("user_id")
+	h.auditService.LogActivity(audit.CreateAuditParams{
+		UserID:    adminID,
+		Action:    "RESET_PASSWORD",
+		Entity:    "USER",
+		EntityID:  uint(userID),
+		Details:   "Admin reset user password",
+		IPAddress: c.ClientIP(),
+		UserAgent: c.Request.UserAgent(),
+	})
 }

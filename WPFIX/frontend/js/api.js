@@ -53,6 +53,14 @@ class API {
         }
     }
 
+    static async updateProfile(data) {
+        return API.request('/auth/profile', 'PUT', data);
+    }
+
+    static async updatePassword(data) {
+        return API.request('/auth/password', 'PUT', data);
+    }
+
     static logout() {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
@@ -109,7 +117,11 @@ class API {
     // ADMIN: Marketplace
     // ========================================
     static async getProducts(params = {}) {
-        return API.request('/admin/products', 'GET', null, params);
+        const user = JSON.parse(localStorage.getItem('user'));
+        if (user && user.role === 'admin') {
+            return API.request('/admin/products', 'GET', null, params);
+        }
+        return API.request('/mahasiswa/marketplace/products', 'GET', null, params);
     }
 
     static async createProduct(productData) {
@@ -124,11 +136,27 @@ class API {
         return API.request(`/admin/products/${id}`, 'DELETE');
     }
 
-    // ========================================
-    // ADMIN: Audit Logs
-    // ========================================
     static async getAuditLogs(params = {}) {
         return API.request('/admin/audit-logs', 'GET', null, params);
+    }
+
+    static async getAllTransfers(params = {}) {
+        return API.request('/admin/transfers', 'GET', null, params);
+    }
+
+    static async getMarketplaceTransactions(params = {}) {
+        return API.request('/admin/marketplace/transactions', 'GET', null, params);
+    }
+
+    // ========================================
+    // MAHASISWA: Transfers
+    // ========================================
+    static async createTransfer(data) {
+        return API.request('/mahasiswa/transfer', 'POST', data);
+    }
+
+    static async getMyTransfers(params = {}) {
+        return API.request('/mahasiswa/transfer/history', 'GET', null, params);
     }
 
     // ========================================
@@ -138,58 +166,77 @@ class API {
         return API.request('/dosen/missions', 'GET', null, params);
     }
 
-    static async createMission(missionData) {
-        return API.request('/dosen/missions', 'POST', missionData);
+    static async createMission(data) {
+        return API.request('/dosen/missions', 'POST', data);
     }
 
-    static async updateMission(id, missionData) {
-        return API.request(`/dosen/missions/${id}`, 'PUT', missionData);
+    static async updateMission(id, data) {
+        return API.request(`/dosen/missions/${id}`, 'PUT', data);
     }
 
     static async deleteMission(id) {
         return API.request(`/dosen/missions/${id}`, 'DELETE');
     }
 
-    static async getSubmissions(params = {}) {
+    static async getDosenSubmissions(params = {}) {
         return API.request('/dosen/submissions', 'GET', null, params);
     }
 
-    static async reviewSubmission(id, reviewData) {
-        return API.request(`/dosen/submissions/${id}/review`, 'POST', reviewData);
-    }
-
-    static async getDosenStudents(params = {}) {
-        return API.request('/dosen/students', 'GET', null, params);
-    }
-
-    static async creditStudent(data) {
-        return API.request('/dosen/wallet/credit', 'POST', data);
-    }
-
-    static async getStudentTransactions(walletId, params = {}) {
-        return API.request(`/dosen/wallets/${walletId}/transactions`, 'GET', null, params);
+    static async reviewSubmission(id, data) {
+        return API.request(`/dosen/submissions/${id}/review`, 'POST', data);
     }
 
     // ========================================
-    // MAHASISWA: Mission & Submission
+    // MAHASISWA & SHARED
     // ========================================
-    static async getStudentMissions(params = {}) {
-        return API.request('/mahasiswa/missions', 'GET', null, params);
+    static async getMissions(params = {}) {
+        const user = JSON.parse(localStorage.getItem('user'));
+        const prefix = user.role === 'dosen' ? '/dosen' : '/mahasiswa';
+        return API.request(`${prefix}/missions`, 'GET', null, params);
     }
 
-    static async getMissionDetails(id) {
+    static async getMissionByID(id) {
+        // Only mahasiswa usually calls this for details to submit
         return API.request(`/mahasiswa/missions/${id}`, 'GET');
     }
 
-    static async submitMission(submissionData) {
-        return API.request('/mahasiswa/missions/submit', 'POST', submissionData);
+    static async submitMissionSubmission(data) {
+        return API.request('/mahasiswa/missions/submit', 'POST', data);
     }
 
-    static async getStudentSubmissions(params = {}) {
+    static async getSubmissions(params = {}) {
+        // Mahasiswa looking at history
         return API.request('/mahasiswa/submissions', 'GET', null, params);
     }
 
-    // Generic Request Helper
+    static async getWallet(userId = null) {
+        const user = JSON.parse(localStorage.getItem('user'));
+        if (user.role === 'admin' && userId) {
+            return API.request(`/admin/wallets/${userId}`, 'GET');
+        } else {
+            // Mahasiswa or Dosen checking own wallet
+            return API.request('/mahasiswa/wallet', 'GET');
+        }
+    }
+
+    static async getTransactions(userId = null, params = {}) {
+        const user = JSON.parse(localStorage.getItem('user'));
+        if (user.role === 'admin' && userId) {
+            return API.request(`/admin/wallets/${userId}/transactions`, 'GET', null, params);
+        } else {
+            // Personal transactions
+            return API.request('/mahasiswa/transactions', 'GET', null, params);
+        }
+    }
+
+    static async purchaseProduct(data) {
+        return API.request('/mahasiswa/marketplace/purchase', 'POST', data);
+    }
+
+    // Overload getProducts to handle roles if needed, or create specific
+    // Admin uses getProducts (line 119) -> /admin/products
+    // Mahasiswa uses renderShop -> needs /mahasiswa/marketplace/products
+    // Let's modify the admin one or add getShopProducts
     static async request(endpoint, method, body = null, params = {}) {
         try {
             let url = `${CONFIG.API_BASE_URL}${endpoint}`;

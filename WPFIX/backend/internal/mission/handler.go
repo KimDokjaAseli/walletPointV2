@@ -3,17 +3,19 @@ package mission
 import (
 	"net/http"
 	"strconv"
+	"wallet-point/internal/audit"
 	"wallet-point/utils"
 
 	"github.com/gin-gonic/gin"
 )
 
 type MissionHandler struct {
-	service *MissionService
+	service      *MissionService
+	auditService *audit.AuditService
 }
 
-func NewMissionHandler(service *MissionService) *MissionHandler {
-	return &MissionHandler{service: service}
+func NewMissionHandler(service *MissionService, auditService *audit.AuditService) *MissionHandler {
+	return &MissionHandler{service: service, auditService: auditService}
 }
 
 // ========================================
@@ -106,6 +108,17 @@ func (h *MissionHandler) CreateMission(c *gin.Context) {
 	}
 
 	utils.SuccessResponse(c, http.StatusCreated, "Mission created successfully", mission)
+
+	// Log activity
+	h.auditService.LogActivity(audit.CreateAuditParams{
+		UserID:    dosenID,
+		Action:    "CREATE_MISSION",
+		Entity:    "MISSION",
+		EntityID:  mission.ID,
+		Details:   "Dosen created new mission: " + mission.Title,
+		IPAddress: c.ClientIP(),
+		UserAgent: c.Request.UserAgent(),
+	})
 }
 
 // UpdateMission handles updating mission
@@ -143,6 +156,18 @@ func (h *MissionHandler) UpdateMission(c *gin.Context) {
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "Mission updated successfully", mission)
+
+	// Log activity
+	dosenID := c.GetUint("user_id")
+	h.auditService.LogActivity(audit.CreateAuditParams{
+		UserID:    dosenID,
+		Action:    "UPDATE_MISSION",
+		Entity:    "MISSION",
+		EntityID:  mission.ID,
+		Details:   "Dosen updated mission: " + mission.Title,
+		IPAddress: c.ClientIP(),
+		UserAgent: c.Request.UserAgent(),
+	})
 }
 
 // DeleteMission handles deleting mission
@@ -170,6 +195,18 @@ func (h *MissionHandler) DeleteMission(c *gin.Context) {
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "Mission deleted successfully", nil)
+
+	// Log activity
+	dosenID := c.GetUint("user_id")
+	h.auditService.LogActivity(audit.CreateAuditParams{
+		UserID:    dosenID,
+		Action:    "DELETE_MISSION",
+		Entity:    "MISSION",
+		EntityID:  uint(missionID),
+		Details:   "Dosen deleted mission ID: " + strconv.FormatUint(missionID, 10),
+		IPAddress: c.ClientIP(),
+		UserAgent: c.Request.UserAgent(),
+	})
 }
 
 // ========================================
@@ -202,6 +239,17 @@ func (h *MissionHandler) SubmitMission(c *gin.Context) {
 	}
 
 	utils.SuccessResponse(c, http.StatusCreated, "Mission submitted successfully", submission)
+
+	// Log activity
+	h.auditService.LogActivity(audit.CreateAuditParams{
+		UserID:    studentID,
+		Action:    "SUBMIT_MISSION",
+		Entity:    "SUBMISSION",
+		EntityID:  submission.ID,
+		Details:   "Student submitted mission work",
+		IPAddress: c.ClientIP(),
+		UserAgent: c.Request.UserAgent(),
+	})
 }
 
 // GetAllSubmissions handles getting submissions
@@ -271,4 +319,15 @@ func (h *MissionHandler) ReviewSubmission(c *gin.Context) {
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "Submission reviewed successfully", nil)
+
+	// Log activity
+	h.auditService.LogActivity(audit.CreateAuditParams{
+		UserID:    dosenID,
+		Action:    "REVIEW_SUBMISSION",
+		Entity:    "SUBMISSION",
+		EntityID:  uint(submissionID),
+		Details:   "Dosen reviewed submission: " + req.Status,
+		IPAddress: c.ClientIP(),
+		UserAgent: c.Request.UserAgent(),
+	})
 }
