@@ -24,7 +24,8 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB, allowedOrigins string, jwtExpiry in
 	r.Use(middleware.IPBasedRateLimiter())
 
 	// Publicly accessible uploaded files
-	r.Static("/uploads", "./uploads")
+	// Backend handler saves to ./public/uploads, so we must serve from there
+	r.Static("/uploads", "./public/uploads")
 
 	// API v1 group
 	api := r.Group("/api/v1")
@@ -165,6 +166,7 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB, allowedOrigins string, jwtExpiry in
 		mahasiswaGroup.GET("/transfer/recipient/:id", transferHandler.GetRecipientInfo)
 		mahasiswaGroup.GET("/transfer/sent", transferHandler.GetSentTransfers)
 		mahasiswaGroup.GET("/transfer/received", transferHandler.GetReceivedTransfers)
+		mahasiswaGroup.GET("/users/lookup", userHandler.LookupUser) // Lookup user for transfer verification
 
 		// Marketplace Purchase
 		mahasiswaGroup.POST("/marketplace/purchase", marketplaceHandler.Purchase)

@@ -1,8 +1,12 @@
 package mission
 
 import (
+	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
+	"time"
 	"wallet-point/internal/audit"
 	"wallet-point/utils"
 
@@ -232,10 +236,76 @@ func (h *MissionHandler) DeleteMission(c *gin.Context) {
 func (h *MissionHandler) SubmitMission(c *gin.Context) {
 	studentID := c.GetUint("user_id")
 
-	var req SubmitMissionRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.ValidationErrorResponse(c, err.Error())
+	// Parse multipart form
+	if err := c.Request.ParseMultipartForm(10 << 20); err != nil { // 10 MB limit
+		// If not multipart, try JSON (fallback)
+		var req SubmitMissionRequest
+		if err := c.ShouldBindJSON(&req); err == nil {
+			// Process JSON request
+			submission, err := h.service.SubmitMission(&req, studentID)
+			if err != nil {
+				utils.ErrorResponse(c, http.StatusBadRequest, err.Error(), nil)
+				return
+			}
+			utils.SuccessResponse(c, http.StatusCreated, "Mission submitted successfully", submission)
+			return
+		}
+	}
+
+	// Extract form fields
+	missionIDStr := c.PostForm("mission_id")
+	missionID, err := strconv.ParseUint(missionIDStr, 10, 32)
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, "Invalid mission ID", nil)
 		return
+	}
+
+	content := c.PostForm("submission_content")
+	fileURL := c.PostForm("file_url") // Optional link fallback
+
+	// Handle File Upload
+	file, header, err := c.Request.FormFile("file")
+	if err == nil {
+		defer file.Close()
+
+		// Create upload dir if not exists
+		uploadDir := "./public/uploads/submissions"
+		if err := os.MkdirAll(uploadDir, 0755); err != nil {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "Failed to create upload directory", err.Error())
+			return
+		}
+
+		// Generate filename: UNIX_USERID_FILENAME
+		filename := fmt.Sprintf("%d_%d_%s", time.Now().Unix(), studentID, filepath.Base(header.Filename))
+		filepath := filepath.Join(uploadDir, filename)
+
+		// Save file
+		out, err := os.Create(filepath)
+		if err != nil {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "Failed to save file", err.Error())
+			return
+		}
+		defer out.Close()
+
+		// buffer copy
+		if _, err := out.ReadFrom(file); err != nil {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "Failed to write file", err.Error())
+			return
+		}
+
+		// Set public URL
+		// Assuming server serves /uploads from ./public/uploads
+		fileURL = fmt.Sprintf("%s/uploads/submissions/%s", utils.GetServerURL(c), filename)
+		// Or relative path if frontend handles base URL:
+		if utils.GetServerURL(c) == "" {
+			fileURL = fmt.Sprintf("/uploads/submissions/%s", filename)
+		}
+	}
+
+	req := SubmitMissionRequest{
+		MissionID: uint(missionID),
+		Content:   content,
+		FileURL:   fileURL,
 	}
 
 	submission, err := h.service.SubmitMission(&req, studentID)

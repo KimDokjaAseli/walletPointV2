@@ -222,3 +222,40 @@ func (h *UserHandler) ChangePassword(c *gin.Context) {
 		UserAgent: c.Request.UserAgent(),
 	})
 }
+
+// LookupUser handles looking up a user for public operations (like transfer)
+// @Summary Lookup user
+// @Description Get basic user info by ID (Public/Student)
+// @Tags Users
+// @Security BearerAuth
+// @Produce json
+// @Param id query int true "User ID"
+// @Success 200 {object} utils.Response{data=object{id=int,full_name=string}}
+// @Failure 404 {object} utils.Response
+// @Router /mahasiswa/users/lookup [get]
+func (h *UserHandler) LookupUser(c *gin.Context) {
+	idStr := c.Query("id")
+	if idStr == "" {
+		utils.ErrorResponse(c, http.StatusBadRequest, "User ID is required", nil)
+		return
+	}
+
+	userID, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, "Invalid user ID", nil)
+		return
+	}
+
+	user, err := h.service.GetUserByID(uint(userID))
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusNotFound, "User not found", nil)
+		return
+	}
+
+	// Return only safe info
+	utils.SuccessResponse(c, http.StatusOK, "User found", gin.H{
+		"id":        user.ID,
+		"full_name": user.FullName,
+		"role":      user.Role,
+	})
+}
