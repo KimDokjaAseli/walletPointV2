@@ -285,7 +285,6 @@ class API {
                 url += `?${searchParams.toString()}`;
             }
 
-<<<<<<< HEAD
             const headers = API.getHeaders();
             let finalBody = body;
 
@@ -294,30 +293,15 @@ class API {
                 delete headers['Content-Type'];
             } else if (body) {
                 finalBody = JSON.stringify(body);
-=======
-            const token = localStorage.getItem('token');
-            const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-
-            if (!isMultipart) {
-                headers['Content-Type'] = 'application/json';
->>>>>>> 5eaa6bcf2df53b6b698699aecad7ffb6861102f4
             }
 
             const options = {
                 method,
-<<<<<<< HEAD
                 headers,
             };
 
             if (finalBody) {
                 options.body = finalBody;
-=======
-                headers
-            };
-
-            if (body) {
-                options.body = isMultipart ? body : JSON.stringify(body);
->>>>>>> 5eaa6bcf2df53b6b698699aecad7ffb6861102f4
             }
 
             const response = await fetch(url, options);

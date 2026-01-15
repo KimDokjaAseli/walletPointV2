@@ -51,7 +51,7 @@ func LoadConfig() *Config {
 	}
 
 	serverHost := getEnv("SERVER_HOST", "localhost")
-	serverPort := getEnv("SERVER_PORT", "8080")
+	serverPort := getEnv("SERVER_PORT", "8102")
 
 	return &Config{
 		ServerHost:         serverHost,

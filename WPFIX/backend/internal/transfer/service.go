@@ -8,7 +8,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// Service handles business logic for transfers
 type Service struct {
 	repo          *Repository
 	walletRepo    *wallet.WalletRepository
@@ -16,7 +15,6 @@ type Service struct {
 	db            *gorm.DB
 }
 
-// NewService creates a new transfer service
 func NewService(repo *Repository, walletRepo *wallet.WalletRepository, walletService *wallet.WalletService, db *gorm.DB) *Service {
 	return &Service{
 		repo:          repo,
@@ -26,41 +24,25 @@ func NewService(repo *Repository, walletRepo *wallet.WalletRepository, walletSer
 	}
 }
 
-// CreateTransfer handles the complete transfer process
-// 1. Validate sender has sufficient balance
-// 2. Validate receiver exists
-// 3. Debit sender wallet
-// 4. Credit receiver wallet
-// 5. Create transfer record
-// All operations are atomic (within a transaction)
 func (s *Service) CreateTransfer(senderUserID, receiverUserID uint, amount int, description string) (*Transfer, error) {
-	// Validation
 	if senderUserID == receiverUserID {
-		return nil, errors.New("cannot transfer to yourself")
+		return nil, errors.New("cannot transfer points to yourself")
 	}
 
-	if amount <= 0 {
-		return nil, errors.New("transfer amount must be positive")
-	}
-
-	// Get sender wallet
-	senderWallet, err := s.walletRepo.FindByUserID(senderUserID)
+	senderWallet, err := s.walletService.GetWalletByUserID(senderUserID)
 	if err != nil {
 		return nil, errors.New("sender wallet not found")
 	}
 
-	// Get receiver wallet
-	receiverWallet, err := s.walletRepo.FindByUserID(receiverUserID)
+	receiverWallet, err := s.walletService.GetWalletByUserID(receiverUserID)
 	if err != nil {
-		return nil, errors.New("receiver wallet not found")
+		return nil, errors.New("receiver wallet not found: check if user exists and has a wallet")
 	}
 
-	// Check sender balance
 	if senderWallet.Balance < amount {
-		return nil, fmt.Errorf("insufficient balance. Current: %d, Required: %d", senderWallet.Balance, amount)
+		return nil, errors.New("insufficient balance")
 	}
 
-	// Create transfer object
 	transfer := &Transfer{
 		SenderWalletID:   senderWallet.ID,
 		ReceiverWalletID: receiverWallet.ID,
@@ -69,91 +51,160 @@ func (s *Service) CreateTransfer(senderUserID, receiverUserID uint, amount int, 
 		Status:           "success",
 	}
 
-	// Execute atomic transaction
 	err = s.db.Transaction(func(tx *gorm.DB) error {
-		// 1. Debit sender wallet
-		if err := s.walletService.DebitWithTransaction(tx, senderWallet.ID, amount, "transfer_out", fmt.Sprintf("Transfer to user %d: %s", receiverUserID, description)); err != nil {
+		// 1. Deduct from sender
+		if err := s.walletService.DebitWithTransaction(tx, senderWallet.ID, amount, "transfer_out", fmt.Sprintf("Transfer to user %d", receiverUserID)); err != nil {
 			return err
 		}
 
-		// 2. Credit receiver wallet
-		if err := s.walletService.CreditWithTransaction(tx, receiverWallet.ID, amount, "transfer_in", fmt.Sprintf("Transfer from user %d: %s", senderUserID, description)); err != nil {
+		// 2. Credit to receiver
+		if err := s.walletService.CreditWithTransaction(tx, receiverWallet.ID, amount, "transfer_in", fmt.Sprintf("Transfer from user %d", senderUserID)); err != nil {
 			return err
 		}
 
 		// 3. Create transfer record
-		if err := s.repo.CreateWithTransaction(tx, transfer); err != nil {
-			return err
-		}
-
-		return nil
+		return s.repo.CreateWithTransaction(tx, transfer)
 	})
 
 	if err != nil {
-		transfer.Status = "failed"
-		return transfer, err
+		return nil, err
 	}
 
 	return transfer, nil
 }
 
-// GetTransferByID retrieves a transfer by ID
-func (s *Service) GetTransferByID(id uint) (*Transfer, error) {
-	return s.repo.FindByID(id)
-}
-
-// GetUserTransfers retrieves all transfers for a user (sent or received)
 func (s *Service) GetUserTransfers(userID uint, limit, offset int) ([]Transfer, int64, error) {
-	// Get user's wallet
-	userWallet, err := s.walletRepo.FindByUserID(userID)
+	wallet, err := s.walletService.GetWalletByUserID(userID)
 	if err != nil {
-		return nil, 0, errors.New("wallet not found")
+		return nil, 0, err
 	}
-
-	return s.repo.FindByWallet(userWallet.ID, limit, offset)
+	transfers, total, err := s.repo.FindByWallet(wallet.ID, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	if err := s.populateTransferDetails(transfers); err != nil {
+		return nil, 0, err
+	}
+	return transfers, total, nil
 }
 
-// GetSentTransfers retrieves transfers sent by a user
 func (s *Service) GetSentTransfers(userID uint, limit, offset int) ([]Transfer, int64, error) {
-	userWallet, err := s.walletRepo.FindByUserID(userID)
+	wallet, err := s.walletService.GetWalletByUserID(userID)
 	if err != nil {
-		return nil, 0, errors.New("wallet not found")
+		return nil, 0, err
 	}
-
-	return s.repo.FindBySenderWallet(userWallet.ID, limit, offset)
+	transfers, total, err := s.repo.FindBySenderWallet(wallet.ID, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	if err := s.populateTransferDetails(transfers); err != nil {
+		return nil, 0, err
+	}
+	return transfers, total, nil
 }
 
-// GetReceivedTransfers retrieves transfers received by a user
 func (s *Service) GetReceivedTransfers(userID uint, limit, offset int) ([]Transfer, int64, error) {
-	userWallet, err := s.walletRepo.FindByUserID(userID)
+	wallet, err := s.walletService.GetWalletByUserID(userID)
 	if err != nil {
-		return nil, 0, errors.New("wallet not found")
+		return nil, 0, err
+	}
+	transfers, total, err := s.repo.FindByReceiverWallet(wallet.ID, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	if err := s.populateTransferDetails(transfers); err != nil {
+		return nil, 0, err
+	}
+	return transfers, total, nil
+}
+
+func (s *Service) GetAllTransfers(limit, offset int) ([]Transfer, int64, error) {
+	transfers, total, err := s.repo.FindAll(limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	if err := s.populateTransferDetails(transfers); err != nil {
+		return nil, 0, err
+	}
+	return transfers, total, nil
+}
+
+// populateTransferDetails fills in the sender and receiver names
+func (s *Service) populateTransferDetails(transfers []Transfer) error {
+	if len(transfers) == 0 {
+		return nil
 	}
 
-	return s.repo.FindByReceiverWallet(userWallet.ID, limit, offset)
+	// Collect wallet IDs
+	walletIDs := make(map[uint]bool)
+	for _, t := range transfers {
+		walletIDs[t.SenderWalletID] = true
+		walletIDs[t.ReceiverWalletID] = true
+	}
+
+	ids := make([]uint, 0, len(walletIDs))
+	for id := range walletIDs {
+		ids = append(ids, id)
+	}
+
+	// Fetch wallets with user info
+	type WalletUser struct {
+		WalletID uint
+		FullName string
+		NimNip   string
+	}
+
+	var walletUsers []WalletUser
+	err := s.db.Table("wallets").
+		Select("wallets.id as wallet_id, users.full_name, users.nim_nip").
+		Joins("JOIN users ON users.id = wallets.user_id").
+		Where("wallets.id IN ?", ids).
+		Scan(&walletUsers).Error
+
+	if err != nil {
+		return err
+	}
+
+	// Map findings
+	infoMap := make(map[uint]WalletUser)
+	for _, wu := range walletUsers {
+		infoMap[wu.WalletID] = wu
+	}
+
+	// Assign back to transfers
+	for i := range transfers {
+		if sender, ok := infoMap[transfers[i].SenderWalletID]; ok {
+			transfers[i].SenderName = sender.FullName
+			transfers[i].SenderNIM = sender.NimNip
+		}
+		if receiver, ok := infoMap[transfers[i].ReceiverWalletID]; ok {
+			transfers[i].ReceiverName = receiver.FullName
+			transfers[i].ReceiverNIM = receiver.NimNip
+		}
+	}
+
+	return nil
 }
 
-// RecipientSummary represents basic recipient info for UI verification
-type RecipientSummary struct {
-	ID       uint   `json:"id"`
-	FullName string `json:"full_name"`
-	Role     string `json:"role"`
-}
-
-// FindRecipient fetches basic info about a potential receiver
 func (s *Service) FindRecipient(userID uint) (*RecipientSummary, error) {
+	// Check if user has a wallet
+	w, err := s.walletService.GetWalletByUserID(userID)
+	if err != nil {
+		return nil, errors.New("user not found or has no wallet")
+	}
+
 	var recipient RecipientSummary
-	err := s.db.Table("users").Select("id, full_name, role").Where("id = ? AND status = 'active'", userID).Scan(&recipient).Error
+	err = s.db.Table("users").
+		Select("id, full_name, role, nim_nip as nim").
+		Where("id = ?", w.UserID).
+		Scan(&recipient).Error
+
 	if err != nil {
 		return nil, err
 	}
 	if recipient.ID == 0 {
-		return nil, errors.New("recipient not found or inactive")
+		return nil, errors.New("user not found")
 	}
-	return &recipient, nil
-}
 
-// GetAllTransfers retrieves all transfers (admin only)
-func (s *Service) GetAllTransfers(limit, offset int) ([]Transfer, int64, error) {
-	return s.repo.FindAll(limit, offset)
+	return &recipient, nil
 }

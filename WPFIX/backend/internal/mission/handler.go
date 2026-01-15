@@ -293,13 +293,8 @@ func (h *MissionHandler) SubmitMission(c *gin.Context) {
 			return
 		}
 
-		// Set public URL
-		// Assuming server serves /uploads from ./public/uploads
-		fileURL = fmt.Sprintf("%s/uploads/submissions/%s", utils.GetServerURL(c), filename)
-		// Or relative path if frontend handles base URL:
-		if utils.GetServerURL(c) == "" {
-			fileURL = fmt.Sprintf("/uploads/submissions/%s", filename)
-		}
+		// Set public URL (Store relative path)
+		fileURL = fmt.Sprintf("/uploads/submissions/%s", filename)
 	}
 
 	req := SubmitMissionRequest{

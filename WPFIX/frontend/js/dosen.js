@@ -810,39 +810,62 @@ class DosenController {
                             
                             ${artifactContent}
 
-                            ${submission.file_url ? `
+                            ${submission.file_url ? (() => {
+                    let viewUrl = submission.file_url;
+                    if (!viewUrl.startsWith('http')) {
+                        viewUrl = `${CONFIG.API_BASE_URL.replace('/api/v1', '')}${viewUrl.startsWith('/') ? '' : '/'}${viewUrl}`;
+                    }
+                    return `
                                 <div style="margin-top: 1rem;">
-                                    <a href="${CONFIG.API_BASE_URL.replace('/api/v1', '')}${submission.file_url}" target="_blank" class="btn" style="background: white; color: var(--primary); border: 1px solid var(--primary); font-size: 0.85rem; width: 100%; font-weight: 600; text-align: center; display: block; text-decoration: none;">
+                                    <a href="${viewUrl}" target="_blank" class="btn" style="background: white; color: var(--primary); border: 1px solid var(--primary); font-size: 0.85rem; width: 100%; font-weight: 600; text-align: center; display: block; text-decoration: none;">
                                         Lihat Dokumentasi Pendukung 🖇️
                                     </a>
-                                </div>
-                            ` : ''}
+                                </div>`;
+                })() : ''}
 
                             <div style="margin-top: 2rem; padding-top: 2rem; border-top: 2px dashed #e2e8f0;">
-                                <form id="reviewForm" onsubmit="DosenController.handleReviewSubmit(event, ${id})">
-                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
-                                        <div class="form-group">
-                                            <label style="font-weight: 700; color: #1e293b;">Beri Skor Kelulusan (0-100)</label>
-                                            <input type="number" name="score" value="100" min="0" max="100" required style="border-radius: 12px; border: 2px solid #e2e8f0; padding: 0.8rem;">
-                                        </div>
-                                        <div class="form-group">
-                                            <label style="font-weight: 700; color: #1e293b;">Keputusan Validasi</label>
-                                            <select name="status" style="border-radius: 12px; border: 2px solid #e2e8f0; padding: 0.8rem; background: white;">
-                                                <option value="approved">✅ Lulus & Beri Reward Poin</option>
-                                                <option value="rejected">❌ Gagal / Perlu Perbaikan</option>
-                                            </select>
-                                        </div>
+                                <form id="reviewForm" onsubmit="DosenController.handleReviewSubmit(event, ${id}, ${mission.points})">
+                                    <div style="text-align:center; margin-bottom:1.5rem;">
+                                        <h4 style="margin-bottom:0.5rem; color:var(--text-main);">Keputusan Validasi</h4>
+                                        <p style="color:var(--text-muted); font-size:0.9rem;">Tentukan apakah siswa lulus misi ini. Poin akan otomatis diberikan jika lulus.</p>
                                     </div>
+
+                                    <div style="display: flex; gap: 1rem; justify-content: center; margin-bottom: 2rem;">
+                                        <label style="cursor: pointer; flex: 1;">
+                                            <input type="radio" name="status" value="rejected" style="display:none;" onchange="document.getElementById('scoreInput').value = 0; document.querySelectorAll('.review-opt').forEach(e=>e.classList.remove('active')); this.parentElement.querySelector('div').classList.add('active');">
+                                            <div class="review-opt" style="padding: 1.5rem; border: 2px solid #e2e8f0; border-radius: 16px; text-align: center; transition:all 0.2s;">
+                                                <div style="font-size: 2rem; margin-bottom: 0.5rem;">❌</div>
+                                                <div style="font-weight: 700; color:var(--text-muted);">Perlu Perbaikan</div>
+                                                <small>0 Poin</small>
+                                            </div>
+                                        </label>
+                                        <label style="cursor: pointer; flex: 1;">
+                                            <input type="radio" name="status" value="approved" checked style="display:none;" onchange="document.getElementById('scoreInput').value = ${mission.points}; document.querySelectorAll('.review-opt').forEach(e=>e.classList.remove('active')); this.parentElement.querySelector('div').classList.add('active');">
+                                            <div class="review-opt active" style="padding: 1.5rem; border: 2px solid var(--success); background:rgba(16, 185, 129, 0.05); border-radius: 16px; text-align: center; transition:all 0.2s;">
+                                                <div style="font-size: 2rem; margin-bottom: 0.5rem;">✅</div>
+                                                <div style="font-weight: 700; color:var(--success);">Lulus & Valid</div>
+                                                <small>${mission.points} Poin</small>
+                                            </div>
+                                        </label>
+                                    </div>
+
+                                    <input type="hidden" name="score" id="scoreInput" value="${mission.points}">
+
                                     <div class="form-group">
-                                        <label style="font-weight: 700; color: #1e293b;">Catatan Evaluasi / Feedback</label>
-                                        <textarea name="review_note" placeholder="Tuliskan alasan penilaian atau saran perbaikan..." style="min-height: 100px; border-radius: 12px; border: 2px solid #e2e8f0; padding: 1rem;"></textarea>
+                                        <label style="font-weight: 700; color: #1e293b;">Catatan Evaluasi / Feedback (Opsional)</label>
+                                        <textarea name="review_note" placeholder="Berikan semangat atau saran perbaikan..." style="min-height: 80px; border-radius: 12px; border: 2px solid #e2e8f0; padding: 1rem; width:100%;"></textarea>
                                     </div>
-                                    <div class="form-actions" style="margin-top: 1rem; display: flex; gap: 1rem; justify-content: flex-end;">
+
+                                    <div class="form-actions" style="margin-top: 2rem; display: flex; gap: 1rem; justify-content: flex-end;">
                                         <button type="button" class="btn" onclick="closeModal()" style="background: transparent; color: var(--text-muted); font-weight: 600;">Kembali</button>
-                                        <button type="submit" class="btn btn-primary" style="padding: 1rem 3rem; border-radius: 15px; font-weight: 700; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);">Submit Penilaian ✨</button>
+                                        <button type="submit" class="btn btn-primary" style="padding: 1rem 3rem; border-radius: 15px; font-weight: 700; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);">Kirim Keputusan ✨</button>
                                     </div>
                                 </form>
                             </div>
+                            <style>
+                                .review-opt.active { border-color: var(--primary) !important; background: rgba(99, 102, 241, 0.05) !important; color: var(--primary) !important; transform: translateY(-2px); box-shadow: var(--shadow-sm); }
+                                .review-opt:hover { border-color: #cbd5e1; }
+                            </style>
                         </div>
                     </div>
                 </div>
@@ -854,7 +877,7 @@ class DosenController {
         }
     }
 
-    static async handleReviewSubmit(e, id) {
+    static async handleReviewSubmit(e, id, missionPoints) {
         e.preventDefault();
         const formData = new FormData(e.target);
         const data = Object.fromEntries(formData.entries());

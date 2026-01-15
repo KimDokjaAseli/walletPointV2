@@ -21,6 +21,7 @@ class MahasiswaController {
                     <button class="tab-btn active" onclick="MahasiswaController.filterMissions('all', this)" style="padding: 0.5rem 1.5rem; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; background: white; box-shadow: var(--shadow-sm);">Semua Item</button>
                     <button class="tab-btn" onclick="MahasiswaController.filterMissions('quiz', this)" style="padding: 0.5rem 1.5rem; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; background: transparent;">Kuis</button>
                     <button class="tab-btn" onclick="MahasiswaController.filterMissions('task', this)" style="padding: 0.5rem 1.5rem; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; background: transparent;">Tugas</button>
+                    <button class="tab-btn" onclick="MahasiswaController.filterMissions('history', this)" style="padding: 0.5rem 1.5rem; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; background: transparent;">Riwayat & Status</button>
                 </div>
 
                 <div id="missionsGrid" class="stats-grid" style="grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));">
@@ -35,54 +36,89 @@ class MahasiswaController {
     static async loadMissions(filterType = 'all') {
         const grid = document.getElementById('missionsGrid');
         try {
-            const res = await API.getMissions();
-            let missions = res.data.missions || [];
+            const [resMissions, resSubs] = await Promise.all([
+                API.getMissions(),
+                API.getSubmissions()
+            ]);
 
-            // Get user submissions to filter out completed ones
-            try {
-                const subRes = await API.getSubmissions();
-                const mySubmissions = subRes.data.submissions || [];
-                const submittedMissionIds = new Set(mySubmissions.map(s => s.mission_id));
+            const missions = resMissions.data.missions || [];
+            const submissions = resSubs.data.submissions || [];
 
-                missions = missions.filter(m => !submittedMissionIds.has(m.id));
-            } catch (err) {
-                console.warn("Could not fetch submissions for filtering", err);
-            }
+            // Map submissions by mission_id for easy lookup
+            const subMap = {};
+            submissions.forEach(s => {
+                // If multiple submissions, take the latest one or the one that is approved
+                if (!subMap[s.mission_id] || subMap[s.mission_id].status !== 'approved') {
+                    subMap[s.mission_id] = s;
+                }
+            });
 
             grid.innerHTML = '';
 
-            const filtered = missions.filter(m => {
-                // Filter out if user already submitted (assuming 'completed' or 'submitted' flag exists or check submissions)
-                // Since API.getMissions doesn't strictly return user status, we might need to rely on a property like `is_completed` if backend provides it, 
-                // OR fetch submissions separately.
-                // Assuming the backend has been updated to include `is_completed` or similar in the mission object for the current user, or we filter by checking submissions.
+            let filtered = [];
 
-                // Let's first fetch submissions to filter client-side if needed, but best if mission object has it.
-                // Looking at typical implementations, let's assume `m.is_completed` or `m.user_submission_status`.
-                // If not available, we need to fetch submissions.
+            if (filterType === 'history') {
+                // Show all things user has submitted
+                filtered = missions.filter(m => subMap[m.id]);
+            } else {
+                // Show available missions logic
+                filtered = missions.filter(m => {
+                    const sub = subMap[m.id];
 
-                // Let's try to assume we can check `m.is_completed` (common pattern). If not, we will modify to fetch submissions.
-                // Wait, the user request corresponds to "mission/quiz done -> hide it".
+                    // If approved, hide from available list (it's in history)
+                    if (sub && sub.status === 'approved') return false;
 
-                if (m.is_completed) return false; // Hide if completed
+                    // If pending, show it but mark as 'Pending'
+                    // If rejected, show it and mark as 'Retry'
 
-                if (filterType === 'all') return true;
-                if (filterType === 'quiz') return m.type === 'quiz';
-                return m.type !== 'quiz';
-            });
+                    if (filterType === 'all') return true;
+                    if (filterType === 'quiz') return m.type === 'quiz';
+                    return m.type !== 'quiz';
+                });
+            }
 
             if (filtered.length === 0) {
                 grid.innerHTML = `
                     <div style="grid-column: 1/-1; text-align: center; padding: 4rem;">
-                        <div style="font-size: 4rem; opacity: 0.2; margin-bottom: 1rem;">🌪️</div>
-                        <h3 style="color: var(--text-muted);">Belum ada apa-apa di sini</h3>
-                        <p style="opacity: 0.6;">Cek lagi nanti untuk misi baru!</p>
+                        <div style="font-size: 4rem; opacity: 0.2; margin-bottom: 1rem;">${filterType === 'history' ? '📜' : '🌪️'}</div>
+                        <h3 style="color: var(--text-muted);">${filterType === 'history' ? 'Belum ada riwayat' : 'Belum ada misi tersedia'}</h3>
+                        <p style="opacity: 0.6;">${filterType === 'history' ? 'Kerjakan misi untuk melihat riwayat Anda' : 'Cek lagi nanti untuk misi baru!'}</p>
                     </div>
                 `;
                 return;
             }
 
-            grid.innerHTML = filtered.map(m => `
+            grid.innerHTML = filtered.map(m => {
+                const sub = subMap[m.id];
+                const isPending = sub && sub.status === 'pending';
+                const isRejected = sub && sub.status === 'rejected';
+                const isApproved = sub && sub.status === 'approved';
+
+                let statusBadge = '';
+                let actionBtn = '';
+
+                if (isPending) {
+                    statusBadge = '<span class="badge badge-warning">Sedang Ditinjau</span>';
+                    actionBtn = `<button class="btn" disabled style="width:100%; padding:1rem; border-radius:0; background:#f1f5f9; color:var(--text-muted);">Menunggu Review ⏳</button>`;
+                } else if (isRejected) {
+                    statusBadge = '<span class="badge badge-error">Perlu Perbaikan</span>';
+                    actionBtn = `
+                        <button class="btn btn-primary" style="border-radius: 0; width: 100%; padding: 1rem; background: var(--error); border: none;" 
+                                onclick="${m.type === 'quiz' ? `MahasiswaController.takeQuiz(${m.id})` : `MahasiswaController.showSubmitModal(${m.id})`}">
+                            Perbaiki & Kirim Ulang 🔄
+                        </button>`;
+                } else if (isApproved) {
+                    statusBadge = '<span class="badge badge-success">Selesai ✅</span>';
+                    actionBtn = `<button class="btn" disabled style="width:100%; padding:1rem; border-radius:0; background:#f1f5f9; color:var(--success); font-weight:700;">Lulus! +${sub.score || m.points} Pts</button>`;
+                } else {
+                    actionBtn = `
+                        <button class="btn btn-primary" style="border-radius: 0; width: 100%; padding: 1rem; background: ${m.type === 'quiz' ? 'linear-gradient(to right, #6366f1, #a855f7)' : 'var(--primary)'}; border: none;" 
+                                onclick="${m.type === 'quiz' ? `MahasiswaController.takeQuiz(${m.id})` : `MahasiswaController.showSubmitModal(${m.id})`}">
+                            ${m.type === 'quiz' ? 'Ikuti Kuis Sekarang 🚀' : 'Mulai Misi ✨'}
+                        </button>`;
+                }
+
+                return `
                 <div class="card fade-in-item" style="display: flex; flex-direction: column; justify-content: space-between; overflow: hidden; border: 1px solid var(--border); transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); cursor: default; position: relative;">
                     ${m.type === 'quiz' ? '<div style="position: absolute; top: 12px; right: 12px; background: rgba(99, 102, 241, 0.1); color: var(--primary); padding: 4px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; border: 1px solid rgba(99, 102, 241, 0.2);">KUIS CEPAT</div>' : ''}
                     
@@ -97,9 +133,18 @@ class MahasiswaController {
                             </div>
                         </div>
 
+                        ${statusBadge ? `<div style="margin-bottom:1rem;">${statusBadge}</div>` : ''}
+
                         <p style="color: var(--text-muted); font-size: 0.9rem; line-height: 1.5; margin-bottom: 1.5rem; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">
                             ${m.description || 'Selesaikan misi ini untuk mendapatkan pengakuan dan poin.'}
                         </p>
+                        
+                        ${isRejected && sub.review_note ? `
+                            <div style="background:rgba(239, 68, 68, 0.05); color:var(--error); padding:0.75rem; border-radius:8px; font-size:0.85rem; margin-bottom:1rem; border:1px solid rgba(239, 68, 68, 0.2);">
+                                <strong>Feedback Dosen:</strong><br>
+                                "${sub.review_note}"
+                            </div>
+                        ` : ''}
 
                         <div style="display: flex; align-items: center; justify-content: space-between; padding-top: 1rem; border-top: 1px solid #f1f5f9;">
                             <div style="display: flex; align-items: center; gap: 0.5rem;">
@@ -116,12 +161,10 @@ class MahasiswaController {
                         </div>
                     </div>
 
-                    <button class="btn btn-primary" style="border-radius: 0; width: 100%; padding: 1rem; background: ${m.type === 'quiz' ? 'linear-gradient(to right, #6366f1, #a855f7)' : 'var(--primary)'}; border: none;" 
-                            onclick="${m.type === 'quiz' ? `MahasiswaController.takeQuiz(${m.id})` : `MahasiswaController.showSubmitModal(${m.id})`}">
-                        ${m.type === 'quiz' ? 'Ikuti Kuis Sekarang 🚀' : 'Mulai Misi ✨'}
-                    </button>
+                    ${actionBtn}
                 </div>
-            `).join('');
+            `;
+            }).join('');
 
         } catch (e) {
             console.error(e);
@@ -811,6 +854,9 @@ class MahasiswaController {
     // ==========================
     // MODULE: TRANSFER POINTS
     // ==========================
+    // ==========================
+    // MODULE: TRANSFER POINTS
+    // ==========================
     static async renderTransfer() {
         const content = document.getElementById('mainContent');
         content.innerHTML = `
@@ -820,59 +866,32 @@ class MahasiswaController {
                     <p style="color: var(--text-muted);">Kirim poin ke teman atau kelompok belajar Anda</p>
                 </div>
 
-                <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 2rem; align-items: start;">
-                    
-                    <!-- Form Section -->
-                    <div class="card" style="padding: 2rem; border: 1px solid var(--border);">
-                        <div style="margin-bottom: 2rem; background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(168, 85, 247, 0.1)); padding: 1.5rem; border-radius: 12px; border: 1px dashed var(--primary);">
-                             <div style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); font-weight: 700;">Saldo Tersedia</div>
-                             <div style="font-size: 2rem; font-weight: 800; color: var(--primary);" id="transferBalance">Loading...</div>
-                        </div>
+                <!-- Balance Display (Always Visible) -->
+                <div style="background: linear-gradient(135deg, #6366f1, #a855f7); padding: 2rem; border-radius: 20px; color: white; margin-bottom: 2rem; text-align: center; box-shadow: 0 10px 25px -5px rgba(99, 102, 241, 0.4);">
+                        <div style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.1em; opacity: 0.9; margin-bottom: 0.5rem;">Saldo Tersedia</div>
+                        <div style="font-size: 3rem; font-weight: 800;" id="transferBalance">Loading...</div>
+                </div>
 
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 2rem;">
-                            <button class="btn" style="background: white; border: 2px solid var(--primary); color: var(--primary); padding: 1rem; border-radius: 12px; display: flex; flex-direction: column; align-items: center; gap: 0.5rem;" onclick="MahasiswaController.openScanQR()">
-                                <span style="font-size: 1.5rem;">📷</span>
-                                <span style="font-size: 0.8rem; font-weight: 700;">Pindai Kode QR</span>
-                            </button>
-                            <button class="btn btn-primary" style="padding: 1rem; border-radius: 12px; display: flex; flex-direction: column; align-items: center; gap: 0.5rem;" onclick="MahasiswaController.showMyQR()">
-                                <span style="font-size: 1.5rem;">📱</span>
-                                <span style="font-size: 0.8rem; font-weight: 700;">Kode QR Saya</span>
-                            </button>
-                        </div>
-
-                        <form id="transferForm" onsubmit="MahasiswaController.handleTransferSubmit(event)">
-                            <div class="form-group">
-                                <label style="font-weight: 600;">Penerima</label>
-                                <div style="position:relative;">
-                                    <input type="number" name="receiver_id" id="receiverIdInput" placeholder="Masukkan ID Siswa / NIM" required style="border-radius: 12px;" oninput="MahasiswaController.checkReceiver(this.value)">
-                                    <div id="receiverFeedback" style="margin-top: 0.5rem; font-size: 0.9rem; min-height: 1.2em; font-weight: 600;"></div>
-                                </div>
-                            </div>
-
-                            <div class="form-group">
-                                <label style="font-weight: 600;">Jumlah (Poin)</label>
-                                <input type="number" name="amount" min="1" placeholder="e.g. 50" required style="border-radius: 12px; font-weight: 700; color: var(--text-main);">
-                            </div>
-
-                            <div class="form-group">
-                                <label style="font-weight: 600;">Pesan (Opsional)</label>
-                                <textarea name="description" placeholder="Untuk proyek kelompok..." style="min-height: 80px; border-radius: 12px;"></textarea>
-                            </div>
-
-                            <button type="submit" class="btn btn-primary" style="width: 100%; padding: 1rem; border-radius: 12px; margin-top: 1rem;">
-                                Konfirmasi Transfer 💸
-                            </button>
-                        </form>
+                <!-- VIEW 1: MENU (Buttons + History) -->
+                <div id="transferMenu">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 2rem;">
+                        <button class="btn card active-scale" style="background: white; border: 1px solid var(--border); padding: 2rem; border-radius: 20px; display: flex; flex-direction: column; align-items: center; gap: 1rem; cursor: pointer; transition: all 0.2s;" onclick="MahasiswaController.openScanQR()">
+                            <div style="font-size: 2.5rem; background: #eff6ff; width: 70px; height: 70px; display: flex; align-items: center; justify-content: center; border-radius: 50%; color: var(--primary);">📷</div>
+                            <span style="font-size: 1.1rem; font-weight: 700; color: var(--text-main);">Pindai Kode QR</span>
+                        </button>
+                        <button class="btn card active-scale" style="background: white; border: 1px solid var(--border); padding: 2rem; border-radius: 20px; display: flex; flex-direction: column; align-items: center; gap: 1rem; cursor: pointer; transition: all 0.2s;" onclick="MahasiswaController.showMyQR()">
+                            <div style="font-size: 2.5rem; background: #fdf4ff; width: 70px; height: 70px; display: flex; align-items: center; justify-content: center; border-radius: 50%; color: var(--secondary);">📱</div>
+                            <span style="font-size: 1.1rem; font-weight: 700; color: var(--text-main);">Kode QR Saya</span>
+                        </button>
                     </div>
 
-                    <!-- History Section -->
-                    <div class="card" style="padding: 0; border: 1px solid var(--border); overflow: hidden; min-height: 500px; display: flex; flex-direction: column;">
+                    <div class="card" style="padding: 0; border: 1px solid var(--border); overflow: hidden; min-height: 400px; display: flex; flex-direction: column;">
                         <div style="padding: 1.5rem; border-bottom: 1px solid var(--border); background: #f8fafc; display: flex; justify-content: space-between; align-items: center;">
-                            <h4 style="margin:0;">Transfer Terbaru</h4>
+                            <h4 style="margin:0; color: var(--text-main);">Riwayat Transfer Terbaru</h4>
                             <button class="btn btn-sm" onclick="MahasiswaController.loadTransferHistory()" style="background: white; border: 1px solid var(--border);">Segarkan 🔄</button>
                         </div>
                         <div style="overflow-x: auto;">
-                            <table class="premium-table" id="transferHistoryTable" style="background: white;">
+                            <table class="premium-table" id="transferHistoryTable" style="margin:0;">
                                 <thead>
                                     <tr>
                                         <th>Tipe</th>
@@ -888,6 +907,43 @@ class MahasiswaController {
                         </div>
                     </div>
                 </div>
+
+                <!-- VIEW 2: FORM (Hidden by default) -->
+                <div id="transferFormContainer" style="display: none;">
+                    <div class="card fade-in-item" style="padding: 2rem; border: 1px solid var(--border); max-width: 500px; margin: 0 auto; border-radius: 24px;">
+                        <div style="margin-bottom: 2rem; text-align: center;">
+                            <h3 style="margin-bottom:0.5rem;">Kirim Poin</h3>
+                            <p style="color:var(--text-muted);">Lengkapi detail transfer di bawah ini</p>
+                        </div>
+                        
+                        <form id="transferForm" onsubmit="MahasiswaController.handleTransferSubmit(event)">
+                            <div class="form-group">
+                                <label style="font-weight: 600;">Penerima</label>
+                                <div style="position:relative;">
+                                    <input type="number" name="receiver_id" id="receiverIdInput" placeholder="Masukkan ID Siswa / NIM" required style="border-radius: 12px; padding: 1rem; font-size: 1rem; width: 100%; box-sizing: border-box; border: 2px solid #e2e8f0;" oninput="MahasiswaController.checkReceiver(this.value)">
+                                    <div id="receiverFeedback" style="margin-top: 0.5rem; font-size: 0.9rem; min-height: 1.2em; font-weight: 600;"></div>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label style="font-weight: 600;">Jumlah (Poin)</label>
+                                <input type="number" name="amount" min="1" placeholder="e.g. 50" required style="border-radius: 12px; font-weight: 700; color: var(--text-main); padding: 1rem; font-size: 1rem; width: 100%; box-sizing: border-box; border: 2px solid #e2e8f0;">
+                            </div>
+
+                            <div class="form-group">
+                                <label style="font-weight: 600;">Pesan (Opsional)</label>
+                                <textarea name="description" placeholder="Untuk proyek kelompok..." style="min-height: 100px; border-radius: 12px; padding: 1rem; width: 100%; box-sizing: border-box; border: 2px solid #e2e8f0;"></textarea>
+                            </div>
+
+                            <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 2rem;">
+                                <button type="button" onclick="MahasiswaController.showTransferMenu()" class="btn" style="background: transparent; border: 1px solid var(--border); padding: 1rem; border-radius: 12px; font-weight: 600; color: var(--text-muted);">Batal</button>
+                                <button type="submit" class="btn btn-primary" style="padding: 1rem; border-radius: 12px; font-weight: 700; background: linear-gradient(to right, #6366f1, #8b5cf6);">
+                                    Konfirmasi 💸
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
             </div>
         `;
 
@@ -900,6 +956,31 @@ class MahasiswaController {
             const wallet = await API.getWallet(user.id);
             document.getElementById('transferBalance').textContent = `${wallet.data.balance.toLocaleString()}`;
         } catch (e) { console.error(e); }
+    }
+
+    static showTransferMenu() {
+        document.getElementById('transferMenu').style.display = 'block';
+        document.getElementById('transferFormContainer').style.display = 'none';
+
+        // Reset form
+        const form = document.getElementById('transferForm');
+        if (form) form.reset();
+        const feedback = document.getElementById('receiverFeedback');
+        if (feedback) feedback.innerHTML = '';
+        this.currentRecipient = null;
+    }
+
+    static showTransferForm(receiverId = null) {
+        document.getElementById('transferMenu').style.display = 'none';
+        document.getElementById('transferFormContainer').style.display = 'block';
+
+        if (receiverId) {
+            const input = document.getElementById('receiverIdInput');
+            if (input) {
+                input.value = receiverId;
+                this.checkReceiver(receiverId);
+            }
+        }
     }
 
     static checkReceiver(id) {
@@ -1079,14 +1160,9 @@ class MahasiswaController {
     static handleScanResult(data) {
         if (data.startsWith("WPUSER:")) {
             const receiverId = data.split(":")[1];
-            const input = document.getElementById('receiverIdInput');
-            if (input) {
-                input.value = receiverId;
-                showToast(`Penerima terdeteksi! Mengonfirmasi identitas...`, "success");
-                this.fetchReceiverName(receiverId);
-            } else {
-                showToast(`ID Pengguna terdeteksi: ${receiverId}. Gunakan di menu Transfer.`, "info");
-            }
+            // Show the form and fill the data!
+            this.showTransferForm(receiverId);
+            showToast(`Penerima terdeteksi! Mengonfirmasi identitas...`, "success");
         }
         else if (data.startsWith("WPT:")) {
             showToast("Pembayaran Merchant via scan segera hadir!", "info");
@@ -1096,28 +1172,7 @@ class MahasiswaController {
         }
     }
 
-    static async fetchReceiverName(id) {
-        const display = document.getElementById('receiverNameDisplay');
-        if (!id || id.length < 1) {
-            display.textContent = '';
-            return;
-        }
 
-        try {
-            // Use debounce if needed, but for now simple fetch
-            display.textContent = '🔍 Mencari penerima...';
-            display.style.color = 'var(--text-muted)';
-
-            const res = await API.request(`/mahasiswa/transfer/recipient/${id}`, 'GET');
-            const user = res.data;
-
-            display.textContent = `✅ PENERIMA: ${user.full_name} (${user.role.toUpperCase()})`;
-            display.style.color = 'var(--success)';
-        } catch (e) {
-            display.textContent = '❌ Pengguna tidak ditemukan atau tidak aktif';
-            display.style.color = 'var(--error)';
-        }
-    }
 
     static async syncExternalPoints() {
         try {

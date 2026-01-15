@@ -39,3 +39,11 @@ type TransferResponse struct {
 	Transfer *Transfer `json:"transfer"`
 	Message  string    `json:"message"`
 }
+
+// RecipientSummary represents simplified user info for transfer verification
+type RecipientSummary struct {
+	ID       uint   `json:"id"`
+	FullName string `json:"full_name"`
+	Role     string `json:"role"`
+	NIM      string `json:"nim,omitempty"`
+}
