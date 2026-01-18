@@ -376,10 +376,11 @@ class AdminController {
                                 <th>Nama Produk</th>
                                 <th>Harga</th>
                                 <th>Stok</th>
+                                <th>QR</th>
                                 <th>Aksi</th>
                             </tr>
                         </thead>
-                        <tbody><tr><td colspan="6" class="text-center">Belum ada produk.</td></tr></tbody>
+                        <tbody><tr><td colspan="7" class="text-center">Belum ada produk.</td></tr></tbody>
                     </table>
                 </div>
             </div>
@@ -391,7 +392,7 @@ class AdminController {
             const tbody = document.querySelector('#productsTable tbody');
 
             if (products.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" class="text-center">Belum ada produk.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center">Belum ada produk.</td></tr>';
                 return;
             }
 
@@ -405,6 +406,9 @@ class AdminController {
                     </td>
                     <td style="font-weight: 700; color: var(--primary);">${p.price.toLocaleString()}</td>
                     <td>${p.stock} unit</td>
+                    <td>
+                        <button class="btn btn-sm" onclick="AdminController.showProductQR(${p.id}, '${p.name}')" style="background: #f1f5f9; color: var(--primary); font-weight: 700; border: 1px solid var(--primary-light);">🔍 QR</button>
+                    </td>
                     <td>
                         <button class="btn btn-sm" onclick="AdminController.showProductModal(${p.id})" style="margin-right:0.5rem;">✏️</button>
                         <button class="btn btn-sm btn-danger" onclick="AdminController.deleteProduct(${p.id})">🗑️</button>
@@ -636,5 +640,38 @@ class AdminController {
     static async deleteProduct(id) {
         if (!confirm('Hapus?')) return;
         try { await API.deleteProduct(id); AdminController.renderProducts('catalog'); } catch (e) { showToast(e.message, 'error'); }
+    }
+
+    static showProductQR(id, name) {
+        const modalHtml = `
+            <div class="modal-overlay" onclick="closeModal(event)">
+                <div class="modal-card" style="max-width: 400px; text-align: center; padding: 2.5rem; border-radius: 30px;">
+                    <h3 style="margin-bottom: 0.5rem;">QR Code Produk</h3>
+                    <p style="color: var(--text-muted); margin-bottom: 1.5rem;">Cetak kode ini untuk ditempel pada produk fisik atau mading.</p>
+                    
+                    <div id="admin-product-qr" style="display: flex; justify-content: center; margin-bottom: 2rem; background: white; padding: 1.5rem; border-radius: 20px; border: 2px solid #f1f5f9;"></div>
+                    
+                    <div style="background: #f8fafc; padding: 1rem; border-radius: 12px; margin-bottom: 2rem; border: 1px solid var(--border);">
+                        <div style="font-weight: 700; color: var(--text-main);">${name}</div>
+                        <code style="color: var(--primary); font-weight: 800;">WPPROD:${id}</code>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr; gap: 1rem;">
+                        <button class="btn btn-primary" onclick="window.print()" style="padding: 1rem; border-radius: 15px; font-weight: 700;">Cetak Sekarang 🖨️</button>
+                        <button class="btn btn-secondary" onclick="closeModal()" style="padding: 1rem; border-radius: 15px;">Tutup</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+        new QRCode(document.getElementById("admin-product-qr"), {
+            text: `WPPROD:${id}`,
+            width: 220,
+            height: 220,
+            colorDark: "#000000",
+            colorLight: "#ffffff",
+            correctLevel: QRCode.CorrectLevel.H
+        });
     }
 }

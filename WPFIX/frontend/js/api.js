@@ -269,6 +269,18 @@ class API {
         return API.request('/mahasiswa/marketplace/purchase', 'POST', data);
     }
 
+    static async generatePaymentToken(data) {
+        return API.request('/mahasiswa/payment/token', 'POST', data);
+    }
+
+    static async checkTokenStatus(token) {
+        return API.request(`/payment/status/${token}`, 'GET');
+    }
+
+    static async executePayment(token) {
+        return API.request('/mahasiswa/payment/execute', 'POST', { token });
+    }
+
     static async syncExternalPoints(data) {
         return API.request('/mahasiswa/external/sync', 'POST', data);
     }

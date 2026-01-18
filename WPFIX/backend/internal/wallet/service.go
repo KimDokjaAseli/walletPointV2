@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 	"math"
 	"time"
 
@@ -124,8 +125,8 @@ func (s *WalletService) GetAllWallets() ([]WalletWithUser, error) {
 	return s.repo.GetAllWithUsers()
 }
 
-// GeneratePaymentToken creates a temporary token for QR payment
-func (s *WalletService) GeneratePaymentToken(req PaymentTokenRequest, userID uint) (*PaymentToken, error) {
+// GeneratePaymentToken creates a secure token for QR payment
+func (s *WalletService) GeneratePaymentToken(req PaymentTokenRequest, userID uint, recipientID uint) (*PaymentToken, error) {
 	// 1. Validate wallet balance
 	wallet, err := s.repo.FindByUserID(userID)
 	if err != nil {
@@ -157,6 +158,7 @@ func (s *WalletService) GeneratePaymentToken(req PaymentTokenRequest, userID uin
 		Merchant:     req.Merchant,
 		Expiry:       time.Now().Add(10 * time.Minute),
 		WalletID:     wallet.ID,
+		RecipientID:  recipientID,
 		Type:         req.Type,
 		Status:       "active",
 	}
@@ -266,20 +268,110 @@ func (s *WalletService) MerchantConsumeToken(tokenCode string, merchantID uint) 
 	return nil, err
 }
 
-// CheckTokenStatus checks if a token still exists
-func (s *WalletService) CheckTokenStatus(tokenCode string) (bool, error) {
+// GetTokenDetails returns full token info regardless of status (active/consumed/expired)
+func (s *WalletService) GetTokenDetails(tokenCode string) (*PaymentToken, error) {
 	var token PaymentToken
-	err := s.db.Where("token = ? AND status = ?", tokenCode, "active").First(&token).Error
+	err := s.db.Where("token = ?", tokenCode).First(&token).Error
 	if err != nil {
-		return false, nil
+		return nil, errors.New("token tidak ditemukan")
+	}
+
+	// Dynamic check for expiry if still marked as active
+	if token.Status == "active" && time.Now().After(token.Expiry) {
+		token.Status = "expired"
+		s.db.Model(&token).Update("status", "expired")
+	}
+
+	return &token, nil
+}
+
+// StudentPayToken executes a payment from a student scanning a bill
+func (s *WalletService) StudentPayToken(tokenCode string, scannerUserID uint) error {
+	var token PaymentToken
+	if err := s.db.Where("token = ? AND status = ?", tokenCode, "active").First(&token).Error; err != nil {
+		return errors.New("token tidak valid")
 	}
 
 	if time.Now().After(token.Expiry) {
-		s.db.Model(&token).Update("status", "expired")
-		return false, nil
+		return errors.New("token kadaluarsa")
 	}
 
-	return true, nil
+	scannerWallet, err := s.repo.FindByUserID(scannerUserID)
+	if err != nil {
+		return errors.New("wallet pembayar tidak ditemukan")
+	}
+
+	if scannerWallet.Balance < token.Amount {
+		return errors.New("saldo tidak mencukupi")
+	}
+
+	// Recipient logic
+	var recipientID uint = token.RecipientID
+	if recipientID == 0 {
+		// Fallback to finding the first Admin
+		var adminUser struct {
+			ID uint
+		}
+		err := s.db.Table("users").Where("role = ?", "admin").Select("id").Order("id asc").First(&adminUser).Error
+		if err != nil {
+			log.Printf("[StudentPayToken] No admin user found in database: %v", err)
+			return errors.New("sistem gagal menemukan admin sebagai penerima")
+		}
+		recipientID = adminUser.ID
+	}
+
+	recipientWallet, err := s.repo.FindByUserID(recipientID)
+	if err != nil {
+		// If wallet doesn't exist, create it (every user should have one)
+		log.Printf("[StudentPayToken] Recipient (User %d) has no wallet, creating one...", recipientID)
+		newWallet := &Wallet{
+			UserID:  recipientID,
+			Balance: 0,
+		}
+		if err := s.db.Create(newWallet).Error; err != nil {
+			return errors.New("gagal menyiapkan wallet penerima")
+		}
+		recipientWallet = newWallet
+	}
+
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		// 1. Deduct from scanner
+		if err := s.repo.UpdateBalance(tx, scannerWallet.ID, -token.Amount); err != nil {
+			return err
+		}
+
+		// 2. Credit to recipient
+		if err := s.repo.UpdateBalance(tx, recipientWallet.ID, token.Amount); err != nil {
+			return err
+		}
+
+		// 3. Mark token as consumed
+		if err := tx.Model(&token).Update("status", "consumed").Error; err != nil {
+			return err
+		}
+
+		// 4. Create Transactions
+		desc := fmt.Sprintf("Bayar Mandiri: %s", token.Merchant)
+		tx.Create(&WalletTransaction{
+			WalletID:    scannerWallet.ID,
+			Type:        "marketplace",
+			Amount:      token.Amount,
+			Direction:   "debit",
+			Status:      "success",
+			Description: desc,
+		})
+
+		tx.Create(&WalletTransaction{
+			WalletID:    recipientWallet.ID,
+			Type:        "marketplace_sale",
+			Amount:      token.Amount,
+			Direction:   "credit",
+			Status:      "success",
+			Description: fmt.Sprintf("Terima Bayar Mandiri dari User ID %d: %s", scannerUserID, token.Merchant),
+		})
+
+		return nil
+	})
 }
 
 // DebitWithTransaction handles point deduction within an existing transaction

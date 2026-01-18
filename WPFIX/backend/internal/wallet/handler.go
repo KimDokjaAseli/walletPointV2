@@ -324,7 +324,7 @@ func (h *WalletHandler) GeneratePaymentToken(c *gin.Context) {
 		return
 	}
 
-	token, err := h.service.GeneratePaymentToken(req, userID)
+	token, err := h.service.GeneratePaymentToken(req, userID, req.RecipientID)
 	if err != nil {
 		utils.ErrorResponse(c, http.StatusBadRequest, err.Error(), nil)
 		return
@@ -333,19 +333,38 @@ func (h *WalletHandler) GeneratePaymentToken(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "Payment token generated successfully", token)
 }
 
-// CheckTokenStatus handles checking if a token is still valid/active
+// CheckTokenStatus returns payment details for a token
 func (h *WalletHandler) CheckTokenStatus(c *gin.Context) {
 	tokenCode := c.Param("token")
 
-	isActive, err := h.service.CheckTokenStatus(tokenCode)
+	token, err := h.service.GetTokenDetails(tokenCode)
 	if err != nil {
-		utils.ErrorResponse(c, http.StatusInternalServerError, "Error checking token status", err.Error())
+		utils.ErrorResponse(c, http.StatusNotFound, "Token tidak valid atau sudah kadaluarsa", err.Error())
 		return
 	}
 
-	utils.SuccessResponse(c, http.StatusOK, "Token status checked", map[string]bool{
-		"is_active": isActive,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "Token info retrieved", token)
+}
+
+// ExecuteStudentPayment allows a student to pay for a scanned token
+func (h *WalletHandler) ExecuteStudentPayment(c *gin.Context) {
+	userID := c.GetUint("user_id")
+	var req struct {
+		Token string `json:"token" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.ValidationErrorResponse(c, err.Error())
+		return
+	}
+
+	err := h.service.StudentPayToken(req.Token, userID)
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, err.Error(), nil)
+		return
+	}
+
+	utils.SuccessResponse(c, http.StatusOK, "Pembayaran berhasil!", nil)
 }
 
 // MerchantScan handles merchant scanning a student's payment QR

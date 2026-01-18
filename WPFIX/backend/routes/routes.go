@@ -171,6 +171,7 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB, allowedOrigins string, jwtExpiry in
 		// Marketplace Purchase
 		mahasiswaGroup.POST("/marketplace/purchase", marketplaceHandler.Purchase)
 		mahasiswaGroup.GET("/marketplace/products", marketplaceHandler.GetAll) // Reuse GetAll, maybe add status filter later
+		mahasiswaGroup.GET("/marketplace/products/:id", marketplaceHandler.GetByID)
 
 		// Gamification
 		mahasiswaGroup.GET("/leaderboard", walletHandler.GetLeaderboard)
@@ -179,6 +180,7 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB, allowedOrigins string, jwtExpiry in
 		mahasiswaGroup.GET("/wallet", walletHandler.GetMyWallet)
 		mahasiswaGroup.GET("/transactions", walletHandler.GetMyTransactions) // Replaces old getTransactions use case
 		mahasiswaGroup.POST("/payment/token", walletHandler.GeneratePaymentToken)
+		mahasiswaGroup.POST("/payment/execute", walletHandler.ExecuteStudentPayment)
 
 		// External Point Sync
 		mahasiswaGroup.POST("/external/sync", externalHandler.SyncPoints)
